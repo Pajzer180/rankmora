@@ -1,7 +1,6 @@
 import 'server-only';
 
 import { doc, getDoc } from 'firebase/firestore';
-import { NextResponse } from 'next/server';
 import { getClientDb } from '@/lib/firebase';
 import { RouteError } from '@/lib/server/routeError';
 import {
@@ -16,7 +15,7 @@ interface AccountsLookupResponse {
 const FIREBASE_ACCOUNTS_LOOKUP_TIMEOUT_MS = 5_000;
 const FIREBASE_ACCOUNTS_LOOKUP_MAX_RESPONSE_BYTES = 256_000;
 
-export { RouteError } from '@/lib/server/routeError';
+export { RouteError, toRouteErrorResponse, jsonErrorResponse } from '@/lib/server/routeError';
 
 export async function resolveUidFromBearerToken(req: Request): Promise<string | null> {
   const authHeader = req.headers.get('authorization') ?? '';
@@ -50,21 +49,11 @@ export async function resolveUidFromBearerToken(req: Request): Promise<string | 
 export async function requireAuthenticatedUid(req: Request): Promise<string> {
   const uid = await resolveUidFromBearerToken(req);
   if (!uid) {
-    throw new RouteError(401, 'Unauthorized');
+    throw new RouteError(401, 'Unauthorized', {
+      code: 'AUTH_UNAUTHORIZED',
+    });
   }
   return uid;
-}
-
-export function toRouteErrorResponse(error: unknown): NextResponse {
-  if (error instanceof RouteError) {
-    return NextResponse.json(
-      { error: error.message, details: error.details ?? null },
-      { status: error.status },
-    );
-  }
-
-  const message = error instanceof Error ? error.message : 'Internal server error';
-  return NextResponse.json({ error: message }, { status: 500 });
 }
 
 export async function assertProjectOwnedByUser(uid: string, projectId: string): Promise<void> {

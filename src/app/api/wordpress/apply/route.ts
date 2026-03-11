@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { writeChangeHistory } from '@/lib/changeHistory';
-import { assertProjectOwnedByUser, requireAuthenticatedUid, RouteError } from '@/lib/server/firebaseAuth';
+import {
+  assertProjectOwnedByUser,
+  requireAuthenticatedUid,
+  RouteError,
+  toRouteErrorResponse,
+} from '@/lib/server/firebaseAuth';
 import { enforceRateLimit } from '@/lib/server/rateLimit';
 import { toWordPressApiPath, wordpressRequest } from '@/lib/wordpress/client';
 import {
@@ -31,15 +36,6 @@ interface LegacyWordPressApplyBody {
 
 interface ApplyBody extends LegacyWordPressApplyBody {
   jobId?: string;
-}
-
-function toErrorResponse(error: unknown) {
-  if (error instanceof RouteError) {
-    return NextResponse.json({ error: error.message, details: error.details ?? null }, { status: error.status });
-  }
-
-  const message = error instanceof Error ? error.message : 'Internal server error';
-  return NextResponse.json({ error: message }, { status: 500 });
 }
 
 async function writeLegacyFailedHistory(
@@ -114,9 +110,12 @@ export async function POST(req: Request) {
 
     const missing = !siteUrl || !pageUrl || !actionType || !summary || !endpoint || afterValue === undefined;
     if (missing) {
-      const errorMessage = 'Brak wymaganych pol: projectId, siteUrl, pageUrl, actionType, summary, endpoint, afterValue';
-      await writeLegacyFailedHistory(uid, legacyBody, errorMessage, Date.now() - startedAt);
-      return NextResponse.json({ error: errorMessage }, { status: 400 });
+      const routeError = new RouteError(
+        400,
+        'Brak wymaganych pol: projectId, siteUrl, pageUrl, actionType, summary, endpoint, afterValue',
+      );
+      await writeLegacyFailedHistory(uid, legacyBody, routeError.message, Date.now() - startedAt);
+      return toRouteErrorResponse(routeError);
     }
 
     try {
@@ -162,9 +161,9 @@ export async function POST(req: Request) {
 
       const executionTimeMs = Date.now() - startedAt;
       await writeLegacyFailedHistory(uid, legacyBody, routeError.message, executionTimeMs);
-      return toErrorResponse(routeError);
+      return toRouteErrorResponse(routeError);
     }
   } catch (error) {
-    return toErrorResponse(error);
+    return toRouteErrorResponse(error);
   }
 }

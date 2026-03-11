@@ -1,17 +1,12 @@
 import { NextResponse } from 'next/server';
-import { requireAuthenticatedUid, RouteError } from '@/lib/server/firebaseAuth';
+import {
+  requireAuthenticatedUid,
+  RouteError,
+  toRouteErrorResponse,
+} from '@/lib/server/firebaseAuth';
 import { enforceRateLimit } from '@/lib/server/rateLimit';
 import { createWordPressPreviewJob } from '@/lib/wordpress/service';
 import type { WordPressPreviewRequestBody } from '@/types/wordpress';
-
-function toErrorResponse(error: unknown) {
-  if (error instanceof RouteError) {
-    return NextResponse.json({ error: error.message, details: error.details ?? null }, { status: error.status });
-  }
-
-  const message = error instanceof Error ? error.message : 'Internal server error';
-  return NextResponse.json({ error: message }, { status: 500 });
-}
 
 export async function POST(req: Request) {
   try {
@@ -37,6 +32,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json(response);
   } catch (error) {
-    return toErrorResponse(error);
+    return toRouteErrorResponse(error);
   }
 }

@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { NextResponse } from 'next/server';
+import { jsonErrorResponse } from '@/lib/server/routeError';
 
 export type RateLimitScope =
   | 'chat'
@@ -158,44 +159,32 @@ function maybeSweepExpiredEntries(now: number): void {
 function rateLimitExceededResponse(scope: RateLimitScope, policy: RateLimitPolicy, resetAt: number): NextResponse {
   const retryAfterSeconds = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000));
 
-  return NextResponse.json(
+  return jsonErrorResponse(
+    'Too Many Requests',
+    429,
     {
-      error: 'Too Many Requests',
-      details: {
-        code: 'RATE_LIMITED',
-        bucket: policy.bucket,
-        scope,
-        limit: policy.max,
-        remaining: 0,
-        retryAfterSeconds,
-        resetAt: new Date(resetAt).toISOString(),
-      },
+      code: 'RATE_LIMITED',
+      bucket: policy.bucket,
+      scope,
+      limit: policy.max,
+      remaining: 0,
+      retryAfterSeconds,
+      resetAt: new Date(resetAt).toISOString(),
     },
     {
-      status: 429,
-      headers: {
-        'Cache-Control': 'no-store',
-        'Retry-After': String(retryAfterSeconds),
-      },
+      'Retry-After': String(retryAfterSeconds),
     },
   );
 }
 
 function rateLimitUnavailableResponse(scope: RateLimitScope): NextResponse {
-  return NextResponse.json(
+  return jsonErrorResponse(
+    'Rate limit unavailable',
+    503,
     {
-      error: 'Rate limit unavailable',
-      details: {
-        code: 'RATE_LIMIT_UNAVAILABLE',
-        bucket: POLICY_DEFINITIONS[scope].bucket,
-        scope,
-      },
-    },
-    {
-      status: 503,
-      headers: {
-        'Cache-Control': 'no-store',
-      },
+      code: 'RATE_LIMIT_UNAVAILABLE',
+      bucket: POLICY_DEFINITIONS[scope].bucket,
+      scope,
     },
   );
 }
