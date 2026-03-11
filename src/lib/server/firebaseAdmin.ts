@@ -1,4 +1,4 @@
-import 'server-only';
+﻿import 'server-only';
 
 import {
   cert,
@@ -15,9 +15,9 @@ import { getFirestore, type Firestore } from 'firebase-admin/firestore';
  * Server-only Firebase Admin bootstrap for Node runtimes.
  *
  * Credentials come from env vars so deployments can inject secrets directly
- * without committing service-account JSON files to the repo. This module is
- * staged infrastructure for step 2.2; current auth flows can migrate to
- * Admin token verification later without changing the client Firebase setup.
+ * without committing service-account JSON files to the repo. Server-side auth
+ * verification now uses this module, while server-side Firestore callers can
+ * migrate to Admin incrementally in later steps.
  */
 interface FirebaseAdminConfig {
   projectId: string;
