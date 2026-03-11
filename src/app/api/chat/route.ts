@@ -5,6 +5,8 @@ import type { AgentMode, AgentStyle } from '@/types/chat';
 import { requireAuthenticatedUid, toRouteErrorResponse } from '@/lib/server/firebaseAuth';
 import { enforceRateLimit } from '@/lib/server/rateLimit';
 import { readResponseTextWithinLimit, safeRemoteFetch } from '@/lib/server/safeRemoteFetch';
+import { chatRequestSchema } from '@/lib/server/schemas/chat';
+import { readJsonRequestBody } from '@/lib/server/validation';
 
 const CHAT_REMOTE_FETCH_TIMEOUT_MS = 8_000;
 const CHAT_REMOTE_FETCH_MAX_RESPONSE_BYTES = 2_000_000;
@@ -255,20 +257,13 @@ export async function POST(req: Request) {
     }
 
     const {
-    messages,
-    agentMode  = 'business' as AgentMode,
-    agentStyle = 'action'   as AgentStyle,
-    activeSiteUrl = null as string | null,
-    activeSiteDomain = null as string | null,
-    activeSiteSource = null as 'snippet' | null,
-  }: {
-    messages: UIMessage[];
-    agentMode?: AgentMode;
-    agentStyle?: AgentStyle;
-    activeSiteUrl?: string | null;
-    activeSiteDomain?: string | null;
-    activeSiteSource?: 'snippet' | null;
-  } = await req.json();
+      messages,
+      agentMode,
+      agentStyle,
+      activeSiteUrl,
+      activeSiteDomain,
+      activeSiteSource,
+    } = await readJsonRequestBody(req, chatRequestSchema);
 
   const isDev = process.env.NODE_ENV !== 'production';
 
@@ -398,7 +393,7 @@ export async function POST(req: Request) {
   return createUIMessageStreamResponse({
     stream: createUIMessageStream({
       execute: async ({ writer }) => {
-        const modelMessages = await convertToModelMessages(messages);
+        const modelMessages = await convertToModelMessages(messages as UIMessage[]);
         const modelMessagesHasSeoMarker = modelMessages.some((m) => {
           const asJson = JSON.stringify(m);
           return asJson.includes('__SEO_DATA__') || asJson.includes('__SEO_DATA_PRESENT__');

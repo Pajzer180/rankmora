@@ -1,4 +1,4 @@
-import { anthropic } from '@ai-sdk/anthropic';
+﻿import { anthropic } from '@ai-sdk/anthropic';
 import { generateText } from 'ai';
 import { NextResponse } from 'next/server';
 import {
@@ -14,31 +14,22 @@ import { getClientDb } from '@/lib/firebase';
 import {
   assertProjectOwnedByUser,
   requireAuthenticatedUid,
+  RouteError,
   toRouteErrorResponse,
 } from '@/lib/server/firebaseAuth';
+import {
+  generateRequestSchema,
+  generateSeoActionSchema,
+  type GenerateSeoAction,
+} from '@/lib/server/schemas/generate';
 import { enforceRateLimit } from '@/lib/server/rateLimit';
-import type { ActionType, ChangeSource, EntityType } from '@/types/history';
+import {
+  parseJsonStringWithSchema,
+  readJsonRequestBody,
+} from '@/lib/server/validation';
+import type { ActionType } from '@/types/history';
 
-interface SeoAction {
-  action: string;
-  selector: string;
-  value: string;
-  type: 'replace_text' | 'replace_meta' | 'add_class';
-}
-
-interface GenerateRequestBody {
-  instruction: string;
-  clientId?: string;
-  projectId?: string;
-  userId?: string;
-  siteUrl?: string;
-  pageUrl?: string;
-  source?: ChangeSource;
-  entityType?: EntityType;
-  entityId?: string | null;
-}
-
-function inferActionType(action: SeoAction): ActionType {
+function inferActionType(action: GenerateSeoAction): ActionType {
   const text = `${action.action} ${action.selector}`.toLowerCase();
   if (text.includes('meta') && text.includes('description')) return 'update_meta_description';
   if (text.includes('title')) return 'update_title';
@@ -62,14 +53,14 @@ export async function POST(req: Request) {
 
     const {
       instruction,
-      clientId = '123',
+      clientId,
       projectId,
       siteUrl,
       pageUrl,
-      source = 'chat',
-      entityType = 'unknown',
-      entityId = null,
-    }: GenerateRequestBody = await req.json();
+      source,
+      entityType,
+      entityId,
+    } = await readJsonRequestBody(req, generateRequestSchema);
 
     if (projectId) {
       await assertProjectOwnedByUser(uid, projectId);
@@ -77,27 +68,31 @@ export async function POST(req: Request) {
 
     const requestId = crypto.randomUUID();
 
-    // 1. Wywolanie Claude Sonnet
     const { text } = await generateText({
       model: anthropic('claude-sonnet-4-6'),
       system: SYSTEM_PROMPT,
       prompt: instruction,
     });
 
-    // 2. Parsowanie JSON z odpowiedzi modelu
-    let parsed: SeoAction;
+    let parsed: GenerateSeoAction;
     try {
-      parsed = JSON.parse(text) as SeoAction;
-    } catch (parseErr) {
-      console.error('[generate] Blad parsowania JSON z Claude:', parseErr);
+      parsed = parseJsonStringWithSchema(text, generateSeoActionSchema, {
+        code: 'MODEL_OUTPUT_INVALID',
+        message: 'Agent zwrocil nieprawidlowy JSON',
+        status: 500,
+        target: 'model_output',
+      });
+    } catch (error) {
+      console.error('[generate] Blad walidacji JSON z Claude:', error);
       console.error('[generate] Surowa odpowiedz modelu:', text);
-      return NextResponse.json(
-        { error: 'Agent zwrocil nieprawidlowy JSON', raw: text },
-        { status: 500 },
-      );
+      throw error instanceof RouteError
+        ? error
+        : new RouteError(500, 'Agent zwrocil nieprawidlowy JSON', {
+            code: 'MODEL_OUTPUT_INVALID',
+            target: 'model_output',
+          });
     }
 
-    // 3. Zapis optymalizacji do Firestore
     const db = getClientDb();
     const actionRef = await addDoc(collection(db, 'seo_actions'), {
       clientId,
@@ -111,7 +106,6 @@ export async function POST(req: Request) {
       requestId,
     });
 
-    // 3b. Obowiazkowy wpis historii zmian (preview)
     if (projectId && siteUrl && pageUrl) {
       await writeChangeHistory({
         projectId,
@@ -131,7 +125,6 @@ export async function POST(req: Request) {
       });
     }
 
-    // 4. Odejmij 10 kredytow - merge:true tworzy dokument jesli nie istnieje
     try {
       await setDoc(
         doc(db, 'clients', clientId),
