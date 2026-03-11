@@ -1,23 +1,16 @@
-import { readFileSync } from 'fs';
-import { join } from 'path';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import {
+  createSnippetAgentErrorResponse,
+  createSnippetAgentResponse,
+} from '@/lib/server/snippetInstall';
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const clientId = searchParams.get('clientId');
+  const token = req.nextUrl.searchParams.get('token')?.trim();
+  const clientId = req.nextUrl.searchParams.get('clientId')?.trim();
 
-  if (!clientId) {
-    return new NextResponse('Brak parametru clientId', { status: 400 });
+  if (!token && !clientId) {
+    return createSnippetAgentErrorResponse('// missing token or clientId', 400);
   }
 
-  const filePath = join(process.cwd(), 'src', 'lib', 'snippet', 'agent.js');
-  const code = readFileSync(filePath, 'utf-8');
-
-  return new NextResponse(code, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/javascript',
-      'Cache-Control': 'no-store',
-    },
-  });
+  return createSnippetAgentResponse('no-store');
 }

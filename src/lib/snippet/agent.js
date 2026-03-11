@@ -1,89 +1,133 @@
 (function () {
-  // Zapisujemy referencję do currentScript w momencie parsowania,
-  // bo wewnątrz callbacków (load, fetch) jest już null.
   var currentScript = document.currentScript;
 
-  window.addEventListener('load', function () {
-    try {
-      var clientId = currentScript
-        ? currentScript.getAttribute('data-client-id')
-        : null;
+  function getScriptUrl() {
+    if (!currentScript || !currentScript.src) {
+      return null;
+    }
 
-      if (!clientId) {
-        console.error('[Bress.io] Brak atrybutu data-client-id na tagu <script>.');
+    try {
+      return new URL(currentScript.src);
+    } catch (error) {
+      console.error('[Bress agent] invalid script URL:', error);
+      return null;
+    }
+  }
+
+  function applyActiveActions(origin, clientId) {
+    fetch(origin + '/api/active-actions?clientId=' + encodeURIComponent(clientId))
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error('HTTP error: ' + response.status);
+        }
+        return response.json();
+      })
+      .then(function (actions) {
+        if (!Array.isArray(actions)) {
+          console.error('[Bress agent] actions response is not an array:', actions);
+          return;
+        }
+
+        actions.forEach(function (action) {
+          try {
+            if (!action.selector) {
+              console.error('[Bress agent] action missing selector:', action);
+              return;
+            }
+
+            if (action.type === 'replace_text') {
+              var element = document.querySelector(action.selector);
+              if (!element) {
+                console.error('[Bress agent] selector not found:', action.selector);
+                return;
+              }
+              element.textContent = action.value;
+              return;
+            }
+
+            if (action.type === 'replace_meta') {
+              var metaElement = document.querySelector(action.selector);
+              if (!metaElement) {
+                console.error('[Bress agent] meta selector not found:', action.selector);
+                return;
+              }
+              var attributeName = action.attribute || 'content';
+              metaElement.setAttribute(attributeName, action.value);
+              return;
+            }
+
+            console.error('[Bress agent] unknown action type:', action.type);
+          } catch (error) {
+            console.error('[Bress agent] action apply error:', action, error);
+          }
+        });
+      })
+      .catch(function (error) {
+        console.error('[Bress agent] actions fetch error:', error);
+      });
+  }
+
+  function sendInstallBeacon(origin, token) {
+    try {
+      var payload = {
+        token: token,
+        url: location.href,
+        hostname: location.hostname,
+        title: document.title,
+        userAgent: navigator.userAgent,
+        vw: window.innerWidth,
+        vh: window.innerHeight,
+        ts: Date.now(),
+      };
+
+      fetch(origin + '/api/snippet/beacon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      })
+        .then(function (response) {
+          console.log('[Bress agent] beacon response:', response.status);
+        })
+        .catch(function (error) {
+          console.error('[Bress agent] beacon error:', error);
+        });
+    } catch (error) {
+      console.error('[Bress agent] beacon send error:', error);
+    }
+  }
+
+  function run() {
+    try {
+      var scriptUrl = getScriptUrl();
+      if (!scriptUrl) {
+        console.warn('[Bress agent] current script unavailable');
         return;
       }
 
-      fetch(
-        'http://localhost:3000/api/active-actions?clientId=' +
-          encodeURIComponent(clientId),
-      )
-        .then(function (response) {
-          if (!response.ok) {
-            throw new Error('Błąd HTTP: ' + response.status);
-          }
-          return response.json();
-        })
-        .then(function (actions) {
-          if (!Array.isArray(actions)) {
-            console.error(
-              '[Bress.io] Odpowiedź API nie jest tablicą. Otrzymano:',
-              actions,
-            );
-            return;
-          }
+      var token = scriptUrl.searchParams.get('token');
+      if (token) {
+        sendInstallBeacon(scriptUrl.origin, token);
+        return;
+      }
 
-          actions.forEach(function (action) {
-            try {
-              if (!action.selector) {
-                console.error('[Bress.io] Akcja bez selektora:', action);
-                return;
-              }
+      var clientId = currentScript
+        ? currentScript.getAttribute('data-client-id')
+        : null;
+      if (clientId) {
+        applyActiveActions(scriptUrl.origin, clientId);
+        return;
+      }
 
-              if (action.type === 'replace_text') {
-                var el = document.querySelector(action.selector);
-                if (!el) {
-                  console.error(
-                    '[Bress.io] Nie znaleziono elementu dla selektora:',
-                    action.selector,
-                  );
-                  return;
-                }
-                el.textContent = action.value;
-              } else if (action.type === 'replace_meta') {
-                var metaEl = document.querySelector(action.selector);
-                if (!metaEl) {
-                  console.error(
-                    '[Bress.io] Nie znaleziono meta elementu dla selektora:',
-                    action.selector,
-                  );
-                  return;
-                }
-                var attrName = action.attribute || 'content';
-                metaEl.setAttribute(attrName, action.value);
-              } else {
-                console.error(
-                  '[Bress.io] Nieznany typ akcji:',
-                  action.type,
-                );
-              }
-            } catch (err) {
-              console.error(
-                '[Bress.io] Błąd podczas wdrażania akcji:',
-                action,
-                err,
-              );
-            }
-          });
-        })
-        .catch(function (err) {
-          console.error(
-            '[Bress.io] Błąd podczas pobierania optymalizacji:',
-            err,
-          );
-        });
-    } catch (err) {
-      console.error('[Bress.io] Nieoczekiwany błąd w snippecie:', err);
+      console.warn('[Bress agent] missing token or data-client-id');
+    } catch (error) {
+      console.error('[Bress agent] init error:', error);
     }
-  });
+  }
+
+  if (document.readyState === 'complete') {
+    run();
+  } else {
+    window.addEventListener('load', run);
+  }
 })();

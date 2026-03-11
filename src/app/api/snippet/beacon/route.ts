@@ -1,61 +1,42 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
-import { findProjectByToken, upsertSiteInstall } from '@/lib/snippetActions';
+import { NextRequest, NextResponse } from 'next/server';
 import { jsonErrorResponse, RouteError } from '@/lib/server/routeError';
+import {
+  registerSnippetInstallFromBeacon,
+  SNIPPET_BEACON_CORS_HEADERS,
+} from '@/lib/server/snippetInstall';
 import { snippetBeaconBodySchema } from '@/lib/server/schemas/snippet';
 import { readJsonRequestBody } from '@/lib/server/validation';
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
-
 function toBeaconErrorResponse(error: unknown) {
   if (error instanceof RouteError) {
-    return jsonErrorResponse(error.message, error.status, error.details, CORS);
+    return jsonErrorResponse(
+      error.message,
+      error.status,
+      error.details,
+      SNIPPET_BEACON_CORS_HEADERS,
+    );
   }
 
   console.error('[beacon] ERROR:', error);
-  return jsonErrorResponse('internal error', 500, null, CORS);
+  return jsonErrorResponse('internal error', 500, null, SNIPPET_BEACON_CORS_HEADERS);
 }
 
 export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS });
+  return new NextResponse(null, { status: 204, headers: SNIPPET_BEACON_CORS_HEADERS });
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await readJsonRequestBody(req, snippetBeaconBodySchema);
-    const { token, hostname, url, title, userAgent, vw, vh } = body;
+    const { token, hostname } = body;
 
     console.log('[beacon] received:', { token: token.slice(0, 8), hostname });
 
-    const project = await findProjectByToken(token);
-    console.log('[beacon] project:', project ? project.id : 'NOT FOUND');
+    const project = await registerSnippetInstallFromBeacon(body);
 
-    if (!project) {
-      throw new RouteError(404, 'invalid token', {
-        code: 'SNIPPET_TOKEN_INVALID',
-      });
-    }
-
-    if (!project.snippetEnabled) {
-      throw new RouteError(403, 'snippet disabled', {
-        code: 'SNIPPET_DISABLED',
-      });
-    }
-
-    await upsertSiteInstall(project, {
-      domain: hostname,
-      pageUrl: url,
-      pageTitle: title,
-      userAgent,
-      viewportWidth: vw,
-      viewportHeight: vh,
-    });
-
+    console.log('[beacon] project:', project.id);
     console.log('[beacon] upsert done, returning ok');
-    return NextResponse.json({ ok: true }, { headers: CORS });
+    return NextResponse.json({ ok: true }, { headers: SNIPPET_BEACON_CORS_HEADERS });
   } catch (error) {
     return toBeaconErrorResponse(error);
   }
