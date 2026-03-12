@@ -14,7 +14,7 @@ import { readJsonRequestBody } from '@/lib/server/validation';
 import { enforceRateLimit } from '@/lib/server/rateLimit';
 import { toWordPressApiPath, wordpressRequest } from '@/lib/wordpress/client';
 import {
-  applyWordPressPreviewJob,
+  applyWordPressChangeJob,
   getConnectedWordPressCredentials,
 } from '@/lib/wordpress/service';
 
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
     const body = await readJsonRequestBody(req, wordpressApplyRequestSchema);
 
     if ('jobId' in body) {
-      const response = await applyWordPressPreviewJob(uid, body.jobId);
+      const response = await applyWordPressChangeJob(uid, body.jobId);
       return NextResponse.json(response);
     }
 

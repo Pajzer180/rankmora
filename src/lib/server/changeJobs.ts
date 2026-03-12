@@ -1,7 +1,12 @@
 import 'server-only';
 
 import { getFirestoreAdmin } from '@/lib/server/firestoreAdmin';
-import type { ChangeJobRecord, ChangeJobStatus } from '@/types/changeJobs';
+import type {
+  ChangeJobErrorPayload,
+  ChangeJobRecord,
+  ChangeJobStatus,
+  ChangeJobValue,
+} from '@/types/changeJobs';
 
 export const CHANGE_JOBS_COLLECTION = 'change_jobs';
 
@@ -39,6 +44,42 @@ export async function updateChangeJob(
   patch: Partial<Omit<ChangeJobRecord, 'id'>>,
 ): Promise<void> {
   await changeJobsCollection().doc(jobId).update(patch);
+}
+
+export async function markChangeJobApplied(
+  jobId: string,
+  args: {
+    appliedValue: ChangeJobValue;
+    rollbackValue: ChangeJobValue;
+    appliedAt?: number;
+  },
+): Promise<void> {
+  const appliedAt = args.appliedAt ?? Date.now();
+
+  await updateChangeJob(jobId, {
+    status: 'applied',
+    appliedValue: args.appliedValue,
+    rollbackValue: args.rollbackValue,
+    appliedAt,
+    updatedAt: appliedAt,
+    error: null,
+  });
+}
+
+export async function markChangeJobFailed(
+  jobId: string,
+  args: {
+    error: ChangeJobErrorPayload;
+    updatedAt?: number;
+  },
+): Promise<void> {
+  const updatedAt = args.updatedAt ?? Date.now();
+
+  await updateChangeJob(jobId, {
+    status: 'failed',
+    error: args.error,
+    updatedAt,
+  });
 }
 
 export async function listChangeJobsByProject(

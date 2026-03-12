@@ -1,7 +1,14 @@
 import 'server-only';
 
 import { randomUUID } from 'crypto';
-import { createChangeJob, updateChangeJob } from '@/lib/server/changeJobs';
+import { writeChangeHistory } from '@/lib/changeHistory';
+import {
+  createChangeJob,
+  getChangeJob,
+  markChangeJobApplied,
+  markChangeJobFailed,
+  updateChangeJob,
+} from '@/lib/server/changeJobs';
 import {
   assertProjectOwnedByUser,
   RouteError,
@@ -20,7 +27,13 @@ import {
   updateProjectWordPressSummary,
   updateWordPressJob,
 } from '@/lib/wordpress/repository';
-import type { ChangeJobChangeType } from '@/types/changeJobs';
+import type {
+  ChangeJobChangeType,
+  ChangeJobErrorPayload,
+  ChangeJobRecord,
+  ChangeJobValue,
+} from '@/types/changeJobs';
+import type { ActionType, ChangeSource, EntityType } from '@/types/history';
 import type { ProjectWordPressState } from '@/types/project';
 import type {
   WordPressApplyResponse,
@@ -91,6 +104,30 @@ interface PreparedPreviewChangeSet {
   suggestedMetaDescription: string;
 }
 
+interface CurrentWordPressSnapshot {
+  title: string;
+  content: string;
+  metaDescription: string | null;
+}
+
+interface CanonicalWordPressApplyPlan {
+  targetType: WordPressTargetType;
+  targetId: number;
+  beforeValue: Record<string, unknown>;
+  proposedValue: Record<string, unknown>;
+  changedFields: WordPressChangedField[];
+}
+
+const META_DESCRIPTION_KEYS = [
+  'description',
+  'meta_description',
+  '_yoast_wpseo_metadesc',
+  'yoast_wpseo_metadesc',
+  'rank_math_description',
+  '_aioseo_description',
+  'aioseo_description',
+] as const;
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -134,35 +171,41 @@ function extractOptionalString(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function getMetaDescriptionCandidates(resource: WordPressResourceResponse): Array<{
+  key: string;
+  value: string | null;
+}> {
+  const meta = resource.meta;
+  if (!meta || typeof meta !== 'object') {
+    return [];
+  }
+
+  return META_DESCRIPTION_KEYS
+    .filter((key) => key in meta)
+    .map((key) => ({
+      key,
+      value: extractOptionalString(meta[key]),
+    }));
+}
+
 function extractMetaDescription(resource: WordPressResourceResponse): string | null {
   const yoastDescription = extractOptionalString(resource.yoast_head_json?.description);
   if (yoastDescription) {
     return yoastDescription;
   }
 
-  const meta = resource.meta;
-  if (!meta || typeof meta !== 'object') {
-    return null;
-  }
+  const candidate = getMetaDescriptionCandidates(resource)
+    .find((entry) => entry.value !== null);
 
-  const candidateKeys = [
-    'description',
-    'meta_description',
-    '_yoast_wpseo_metadesc',
-    'yoast_wpseo_metadesc',
-    'rank_math_description',
-    '_aioseo_description',
-    'aioseo_description',
-  ];
+  return candidate?.value ?? null;
+}
 
-  for (const key of candidateKeys) {
-    const candidate = extractOptionalString(meta[key]);
-    if (candidate) {
-      return candidate;
-    }
-  }
-
-  return null;
+function buildCurrentWordPressSnapshot(resource: WordPressResourceResponse): CurrentWordPressSnapshot {
+  return {
+    title: extractFieldValue(resource.title),
+    content: extractFieldValue(resource.content),
+    metaDescription: extractMetaDescription(resource),
+  };
 }
 
 function normalizeWordPressItem(
@@ -196,19 +239,6 @@ function buildProjectWordPressState(
     lastError,
     lastVerifiedUser: lastVerifiedUser ?? null,
   };
-}
-
-function isJobBoundToCurrentConnection(
-  job: WordPressJobRecord,
-  connection: WordPressConnectionRecord,
-): boolean {
-  if (!job.connectionSiteUrl) return true;
-
-  try {
-    return normalizeWordPressSiteUrl(job.connectionSiteUrl) === normalizeWordPressSiteUrl(connection.siteUrl);
-  } catch {
-    return false;
-  }
 }
 
 function normalizePreviewInput(value: string | undefined): string | undefined {
@@ -348,10 +378,485 @@ function preparePreviewChangeSet(args: {
   };
 }
 
-async function failJob(jobId: string, message: string): Promise<void> {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function buildChangeJobErrorPayload(
+  code: string,
+  message: string,
+  details: Record<string, unknown> | null = null,
+): ChangeJobErrorPayload {
+  return {
+    code,
+    message,
+    details,
+  };
+}
+
+function getRouteErrorDetailsRecord(error: RouteError): Record<string, unknown> | null {
+  return isRecord(error.details) ? error.details : null;
+}
+
+function buildChangeJobFailurePayload(
+  error: RouteError,
+  fallbackCode: string,
+  details: Record<string, unknown> | null = null,
+): ChangeJobErrorPayload {
+  const errorDetails = getRouteErrorDetailsRecord(error);
+  const code = typeof errorDetails?.code === 'string'
+    ? errorDetails.code
+    : fallbackCode;
+  const mergedDetails = {
+    ...(errorDetails ?? {}),
+    ...(details ?? {}),
+  };
+
+  if ('code' in mergedDetails) {
+    delete mergedDetails.code;
+  }
+
+  return buildChangeJobErrorPayload(
+    code,
+    error.message,
+    Object.keys(mergedDetails).length > 0 ? mergedDetails : null,
+  );
+}
+
+function resolveChangeJobTargetType(entityType: ChangeJobRecord['entityType']): WordPressTargetType {
+  switch (entityType) {
+    case 'wp_page':
+      return 'page';
+    case 'wp_post':
+      return 'post';
+    default:
+      throw new RouteError(409, 'Ten change job nie wspiera WordPress apply.', {
+        code: 'CHANGE_JOB_TARGET_UNSUPPORTED',
+        entityType,
+      });
+  }
+}
+
+function resolveChangeJobTargetId(entityId: string | null): number {
+  const normalized = entityId?.trim() ?? '';
+  const parsed = Number(normalized);
+
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new RouteError(409, 'Change job ma nieprawidlowy target.', {
+      code: 'CHANGE_JOB_TARGET_INVALID',
+      entityId,
+    });
+  }
+
+  return parsed;
+}
+
+function normalizeChangeJobValueForApply(
+  value: ChangeJobValue,
+  changeType: ChangeJobChangeType,
+  valueLabel: 'beforeValue' | 'proposedValue',
+): Record<string, unknown> {
+  if (isRecord(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    switch (changeType) {
+      case 'title':
+        return { title: value };
+      case 'content':
+        return { content: value };
+      case 'meta_description':
+        return { metaDescription: value };
+      default:
+        break;
+    }
+  }
+
+  if (value === null && valueLabel === 'beforeValue' && changeType === 'meta_description') {
+    return { metaDescription: null };
+  }
+  throw new RouteError(409, `Change job ma nieprawidlowe ${valueLabel}.`, {
+    code: 'CHANGE_JOB_INVALID_PAYLOAD',
+    valueLabel,
+    changeType,
+  });
+}
+
+function extractChangedFieldsFromProposedValue(
+  proposedValue: Record<string, unknown>,
+): WordPressChangedField[] {
+  const changedFields: WordPressChangedField[] = [];
+
+  if ('title' in proposedValue) {
+    if (typeof proposedValue.title !== 'string') {
+      throw new RouteError(409, 'Change job ma nieprawidlowa proposedValue.title.', {
+        code: 'CHANGE_JOB_INVALID_PAYLOAD',
+        field: 'title',
+      });
+    }
+    changedFields.push('title');
+  }
+
+  if ('content' in proposedValue) {
+    if (typeof proposedValue.content !== 'string') {
+      throw new RouteError(409, 'Change job ma nieprawidlowa proposedValue.content.', {
+        code: 'CHANGE_JOB_INVALID_PAYLOAD',
+        field: 'content',
+      });
+    }
+    changedFields.push('content');
+  }
+
+  if ('metaDescription' in proposedValue) {
+    if (typeof proposedValue.metaDescription !== 'string') {
+      throw new RouteError(409, 'Change job ma nieprawidlowa proposedValue.metaDescription.', {
+        code: 'CHANGE_JOB_INVALID_PAYLOAD',
+        field: 'metaDescription',
+      });
+    }
+    changedFields.push('meta_description');
+  }
+
+  if (!changedFields.length) {
+    throw new RouteError(409, 'Change job nie zawiera wspieranych zmian do wdrozenia.', {
+      code: 'CHANGE_JOB_UNSUPPORTED_CHANGE',
+    });
+  }
+
+  return changedFields;
+}
+
+function getBeforeFieldValue(
+  beforeValue: Record<string, unknown>,
+  field: WordPressChangedField,
+): string | null {
+  switch (field) {
+    case 'title':
+      if (typeof beforeValue.title !== 'string') {
+        throw new RouteError(409, 'Change job ma nieprawidlowa beforeValue.title.', {
+          code: 'CHANGE_JOB_INVALID_PAYLOAD',
+          field: 'title',
+        });
+      }
+      return beforeValue.title;
+    case 'content':
+      if (typeof beforeValue.content !== 'string') {
+        throw new RouteError(409, 'Change job ma nieprawidlowa beforeValue.content.', {
+          code: 'CHANGE_JOB_INVALID_PAYLOAD',
+          field: 'content',
+        });
+      }
+      return beforeValue.content;
+    case 'meta_description':
+      if (beforeValue.metaDescription !== null && typeof beforeValue.metaDescription !== 'string') {
+        throw new RouteError(409, 'Change job ma nieprawidlowa beforeValue.metaDescription.', {
+          code: 'CHANGE_JOB_INVALID_PAYLOAD',
+          field: 'metaDescription',
+        });
+      }
+      return (beforeValue.metaDescription as string | null | undefined) ?? null;
+    default:
+      return null;
+  }
+}
+
+function getProposedFieldValue(
+  proposedValue: Record<string, unknown>,
+  field: WordPressChangedField,
+): string {
+  switch (field) {
+    case 'title':
+      if (typeof proposedValue.title !== 'string') {
+        throw new RouteError(409, 'Change job ma nieprawidlowa proposedValue.title.', {
+          code: 'CHANGE_JOB_INVALID_PAYLOAD',
+          field: 'title',
+        });
+      }
+      return proposedValue.title;
+    case 'content':
+      if (typeof proposedValue.content !== 'string') {
+        throw new RouteError(409, 'Change job ma nieprawidlowa proposedValue.content.', {
+          code: 'CHANGE_JOB_INVALID_PAYLOAD',
+          field: 'content',
+        });
+      }
+      return proposedValue.content;
+    case 'meta_description':
+      if (typeof proposedValue.metaDescription !== 'string') {
+        throw new RouteError(409, 'Change job ma nieprawidlowa proposedValue.metaDescription.', {
+          code: 'CHANGE_JOB_INVALID_PAYLOAD',
+          field: 'metaDescription',
+        });
+      }
+      return proposedValue.metaDescription;
+    default:
+      return '';
+  }
+}
+
+function getCurrentFieldValue(
+  snapshot: CurrentWordPressSnapshot,
+  field: WordPressChangedField,
+): string | null {
+  switch (field) {
+    case 'title':
+      return snapshot.title;
+    case 'content':
+      return snapshot.content;
+    case 'meta_description':
+      return snapshot.metaDescription;
+    default:
+      return null;
+  }
+}
+
+function detectChangeJobConflictFields(args: {
+  changedFields: WordPressChangedField[];
+  beforeValue: Record<string, unknown>;
+  currentSnapshot: CurrentWordPressSnapshot;
+}): WordPressChangedField[] {
+  const conflicts: WordPressChangedField[] = [];
+
+  for (const field of args.changedFields) {
+    const expectedValue = getBeforeFieldValue(args.beforeValue, field);
+    const currentValue = getCurrentFieldValue(args.currentSnapshot, field);
+    if (currentValue !== expectedValue) {
+      conflicts.push(field);
+    }
+  }
+
+  return conflicts;
+}
+
+function resolveMetaDescriptionUpdateKeys(
+  resource: WordPressResourceResponse,
+  expectedBeforeValue: string | null,
+): string[] {
+  const candidates = getMetaDescriptionCandidates(resource);
+  if (!candidates.length) {
+    return [];
+  }
+
+  const matchingKeys = candidates
+    .filter((candidate) => candidate.value === expectedBeforeValue)
+    .map((candidate) => candidate.key);
+
+  return matchingKeys.length > 0
+    ? matchingKeys
+    : [candidates[0].key];
+}
+
+function buildWordPressApplyPayload(args: {
+  resource: WordPressResourceResponse;
+  changedFields: WordPressChangedField[];
+  beforeValue: Record<string, unknown>;
+  proposedValue: Record<string, unknown>;
+}): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+
+  for (const field of args.changedFields) {
+    switch (field) {
+      case 'title':
+        payload.title = getProposedFieldValue(args.proposedValue, 'title');
+        break;
+      case 'content':
+        payload.content = getProposedFieldValue(args.proposedValue, 'content');
+        break;
+      case 'meta_description': {
+        const expectedBeforeValue = getBeforeFieldValue(args.beforeValue, 'meta_description');
+        const nextValue = getProposedFieldValue(args.proposedValue, 'meta_description');
+        const keys = resolveMetaDescriptionUpdateKeys(args.resource, expectedBeforeValue);
+        if (!keys.length) {
+          throw new RouteError(409, 'Nie mozna zastosowac meta description dla tego change job.', {
+            code: 'CHANGE_JOB_TARGET_UNSUPPORTED',
+            field: 'metaDescription',
+          });
+        }
+
+        const metaPayload: Record<string, string> = {};
+        for (const key of keys) {
+          metaPayload[key] = nextValue;
+        }
+        payload.meta = metaPayload;
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  if (!Object.keys(payload).length) {
+    throw new RouteError(409, 'Change job nie zawiera wspieranych zmian do wdrozenia.', {
+      code: 'CHANGE_JOB_UNSUPPORTED_CHANGE',
+    });
+  }
+
+  return payload;
+}
+
+function buildCanonicalApplyPlan(job: ChangeJobRecord): CanonicalWordPressApplyPlan {
+  const proposedValue = normalizeChangeJobValueForApply(job.proposedValue, job.changeType, 'proposedValue');
+
+  return {
+    targetType: resolveChangeJobTargetType(job.entityType),
+    targetId: resolveChangeJobTargetId(job.entityId),
+    beforeValue: normalizeChangeJobValueForApply(job.beforeValue, job.changeType, 'beforeValue'),
+    proposedValue,
+    changedFields: extractChangedFieldsFromProposedValue(proposedValue),
+  };
+}
+
+function mapChangeJobChangeTypeToHistoryActionType(changeType: ChangeJobChangeType): ActionType {
+  switch (changeType) {
+    case 'title':
+      return 'update_title';
+    case 'meta_description':
+      return 'update_meta_description';
+    case 'content':
+      return 'update_content';
+    case 'h1':
+      return 'update_h1';
+    default:
+      return 'update_other';
+  }
+}
+
+function mapChangeJobSourceToHistorySource(source: ChangeJobRecord['source']): ChangeSource {
+  switch (source) {
+    case 'chat':
+      return 'chat';
+    case 'manual':
+      return 'wordpress_api';
+    case 'quick_win':
+    case 'system':
+    default:
+      return 'future_automation';
+  }
+}
+
+function mapChangeJobEntityTypeToHistoryEntityType(entityType: ChangeJobRecord['entityType']): EntityType {
+  switch (entityType) {
+    case 'wp_page':
+      return 'page';
+    case 'wp_post':
+      return 'post';
+    default:
+      return 'unknown';
+  }
+}
+
+function serializeChangeJobValueForHistory(
+  value: ChangeJobValue,
+  changeType: ChangeJobChangeType,
+): string {
+  if (value === null) {
+    return '';
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (!isRecord(value)) {
+    return JSON.stringify(value);
+  }
+
+  switch (changeType) {
+    case 'title':
+      return typeof value.title === 'string' ? value.title : JSON.stringify(value);
+    case 'content':
+      return typeof value.content === 'string' ? value.content : JSON.stringify(value);
+    case 'meta_description':
+      return typeof value.metaDescription === 'string'
+        ? value.metaDescription
+        : value.metaDescription === null
+          ? ''
+          : JSON.stringify(value);
+    default:
+      return JSON.stringify(value);
+  }
+}
+
+function assertChangeJobApplyState(job: ChangeJobRecord): void {
+  switch (job.status) {
+    case 'preview_ready':
+      return;
+    case 'applied':
+      throw new RouteError(409, 'Ten change job zostal juz zastosowany.', {
+        code: 'CHANGE_JOB_ALREADY_APPLIED',
+        jobId: job.id,
+      });
+    case 'rolled_back':
+      throw new RouteError(409, 'Ten change job zostal juz wycofany.', {
+        code: 'CHANGE_JOB_ALREADY_ROLLED_BACK',
+        jobId: job.id,
+      });
+    case 'failed':
+      throw new RouteError(409, 'Ten change job jest oznaczony jako failed i nie moze byc zastosowany.', {
+        code: 'CHANGE_JOB_FAILED',
+        jobId: job.id,
+      });
+    default:
+      throw new RouteError(409, 'Ten change job nie jest gotowy do zastosowania.', {
+        code: 'CHANGE_JOB_INVALID_STATE',
+        jobId: job.id,
+        status: job.status,
+      });
+  }
+}
+
+async function writeAppliedChangeJobHistory(args: {
+  job: ChangeJobRecord;
+  uid: string;
+  siteUrl: string;
+  executionTimeMs: number;
+}): Promise<void> {
+  await writeChangeHistory({
+    projectId: args.job.projectId,
+    userId: args.uid,
+    siteUrl: args.siteUrl,
+    pageUrl: args.job.pageUrl,
+    actionType: mapChangeJobChangeTypeToHistoryActionType(args.job.changeType),
+    source: mapChangeJobSourceToHistorySource(args.job.source),
+    status: 'applied',
+    beforeValue: serializeChangeJobValueForHistory(args.job.beforeValue, args.job.changeType),
+    afterValue: serializeChangeJobValueForHistory(args.job.proposedValue, args.job.changeType),
+    summary: args.job.previewSummary,
+    entityType: mapChangeJobEntityTypeToHistoryEntityType(args.job.entityType),
+    entityId: args.job.entityId,
+    requestId: args.job.requestId,
+    actionId: args.job.id,
+    executionTimeMs: args.executionTimeMs,
+  });
+}
+
+async function failLegacyWordPressJob(jobId: string, message: string): Promise<void> {
+  const legacyJob = await getWordPressJob(jobId);
+  if (!legacyJob) {
+    return;
+  }
+
   await updateWordPressJob(jobId, {
     status: 'failed',
     error: message,
+  });
+}
+
+async function markLegacyWordPressJobAppliedIfPresent(args: {
+  jobId: string;
+  targetUrl: string | null;
+}): Promise<void> {
+  const legacyJob = await getWordPressJob(args.jobId);
+  if (!legacyJob) {
+    return;
+  }
+
+  await updateWordPressJob(args.jobId, {
+    status: 'applied',
+    appliedAt: nowIso(),
+    error: null,
+    targetUrl: args.targetUrl,
   });
 }
 
@@ -734,87 +1239,136 @@ export async function createWordPressPreviewJob(
   }
 }
 
-export async function applyWordPressPreviewJob(
+export async function applyWordPressChangeJob(
   uid: string,
   jobId: string,
 ): Promise<WordPressApplyResponse> {
-  const job = await getWordPressJob(jobId);
+  const startedAt = Date.now();
+  const job = await getChangeJob(jobId);
+
   if (!job) {
-    throw new RouteError(404, 'Nie znaleziono WordPress job.');
+    throw new RouteError(404, 'Nie znaleziono change job.', {
+      code: 'CHANGE_JOB_NOT_FOUND',
+      jobId,
+    });
   }
 
-  if (job.userId !== uid) {
-    throw new RouteError(403, 'Forbidden');
+  await assertProjectOwnedByUser(uid, job.projectId);
+
+  if (job.uid !== uid) {
+    throw new RouteError(403, 'Forbidden', {
+      code: 'CHANGE_JOB_FORBIDDEN',
+      jobId,
+    });
   }
 
-  if (job.status === 'applied') {
-    throw new RouteError(409, 'Ten job zostal juz zastosowany.');
-  }
+  assertChangeJobApplyState(job);
 
-  const payload: Record<string, unknown> = {};
-
-  if (typeof job.after.title === 'string') {
-    payload.title = job.after.title;
-  }
-  if (typeof job.after.content === 'string') {
-    payload.content = job.after.content;
-  }
-
-  if (!Object.keys(payload).length) {
-    const message = 'Preview job nie zawiera zmian do wdrozenia.';
-    await failJob(job.id, message);
-    throw new RouteError(400, message);
-  }
-
-  let connection: WordPressConnectionRecord;
-  let applicationPassword: string;
+  let connection: WordPressConnectionRecord | null = null;
 
   try {
+    const plan = buildCanonicalApplyPlan(job);
     const auth = await getConnectedWordPressAuth(uid);
     connection = auth.connection;
-    applicationPassword = auth.applicationPassword;
-  } catch (error) {
-    const routeError = buildRouteError(error, 'Nie udalo sie zastosowac zmian w WordPress.');
-    await failJob(job.id, routeError.message);
-    throw routeError;
-  }
+    const applicationPassword = auth.applicationPassword;
 
-  if (!isJobBoundToCurrentConnection(job, connection)) {
-    const message = 'Ten preview job pochodzi z innego polaczenia WordPress. Wygeneruj nowy podglad.';
-    await failJob(job.id, message);
-    throw new RouteError(409, message);
-  }
+    if (connection.projectId?.trim() && connection.projectId.trim() !== job.projectId) {
+      throw new RouteError(409, 'To polaczenie WordPress jest przypisane do innego projektu.', {
+        code: 'WORDPRESS_PROJECT_MISMATCH',
+        jobId: job.id,
+      });
+    }
 
-  try {
+    const currentResource = await wordpressRequest<WordPressResourceResponse>({
+      siteUrl: connection.siteUrl,
+      username: connection.wpUsername,
+      applicationPassword,
+      path: `/wp-json/wp/v2/${pluralizeTargetType(plan.targetType)}/${plan.targetId}`,
+      method: 'GET',
+      searchParams: {
+        context: 'edit',
+      },
+    });
+
+    const currentSnapshot = buildCurrentWordPressSnapshot(currentResource);
+    const conflictFields = detectChangeJobConflictFields({
+      changedFields: plan.changedFields,
+      beforeValue: plan.beforeValue,
+      currentSnapshot,
+    });
+
+    if (conflictFields.length > 0) {
+      throw new RouteError(409, 'Apply conflict', {
+        code: 'CHANGE_JOB_CONFLICT',
+        jobId: job.id,
+        conflictFields,
+      });
+    }
+
+    const payload = buildWordPressApplyPayload({
+      resource: currentResource,
+      changedFields: plan.changedFields,
+      beforeValue: plan.beforeValue,
+      proposedValue: plan.proposedValue,
+    });
+
     const updatedResource = await wordpressRequest<WordPressResourceResponse>({
       siteUrl: connection.siteUrl,
       username: connection.wpUsername,
       applicationPassword,
-      path: `/wp-json/wp/v2/${pluralizeTargetType(job.targetType)}/${job.targetId}`,
+      path: `/wp-json/wp/v2/${pluralizeTargetType(plan.targetType)}/${plan.targetId}`,
       method: 'POST',
       body: payload,
     });
 
-    const appliedAt = nowIso();
-    await updateWordPressJob(job.id, {
-      status: 'applied',
+    const appliedAt = Date.now();
+    await markChangeJobApplied(job.id, {
+      appliedValue: job.proposedValue,
+      rollbackValue: job.beforeValue,
       appliedAt,
-      error: null,
-      targetUrl: updatedResource.link ?? job.targetUrl ?? null,
+    });
+    await markLegacyWordPressJobAppliedIfPresent({
+      jobId: job.id,
+      targetUrl: updatedResource.link ?? job.pageUrl,
+    });
+
+    const executionTimeMs = Date.now() - startedAt;
+    await writeAppliedChangeJobHistory({
+      job,
+      uid,
+      siteUrl: connection.siteUrl,
+      executionTimeMs,
     });
 
     return {
       ok: true,
-      status: 'applied',
       jobId: job.id,
-      updatedItem: normalizeWordPressItem(updatedResource, job.targetType),
+      projectId: job.projectId,
+      status: 'applied',
+      changeType: job.changeType,
+      pageUrl: job.pageUrl,
+      beforeValue: job.beforeValue,
+      appliedValue: job.proposedValue,
+      rollbackValue: job.beforeValue,
+      requestId: job.requestId,
+      updatedItem: normalizeWordPressItem(updatedResource, plan.targetType),
     };
   } catch (error) {
-    const routeError = buildRouteError(error, 'Nie udalo sie zastosowac zmian w WordPress.');
-    await failJob(job.id, routeError.message);
-    if (routeError.status === 401) {
+    const routeError = buildRouteError(error, 'Nie udalo sie zastosowac change job w WordPress.');
+    const failurePayload = buildChangeJobFailurePayload(routeError, 'CHANGE_JOB_APPLY_FAILED', {
+      jobId: job.id,
+    });
+
+    await markChangeJobFailed(job.id, {
+      error: failurePayload,
+      updatedAt: Date.now(),
+    });
+    await failLegacyWordPressJob(job.id, routeError.message);
+
+    if (routeError.status === 401 && connection) {
       await markRuntimeConnectionFailure(connection, routeError.message);
     }
+
     throw routeError;
   }
 }

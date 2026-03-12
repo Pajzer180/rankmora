@@ -153,8 +153,15 @@ export type WordPressApplyRequestBody = WordPressApplyJobRequestBody | WordPress
 
 export interface WordPressApplyResponse {
   ok: true;
-  status: 'applied';
   jobId: string;
+  projectId: string;
+  status: Extract<ChangeJobStatus, 'applied'>;
+  changeType: ChangeJobChangeType;
+  pageUrl: string;
+  beforeValue: ChangeJobValue;
+  appliedValue: ChangeJobValue;
+  rollbackValue: ChangeJobValue;
+  requestId: string;
   updatedItem: WordPressItemSummary;
 }
 
