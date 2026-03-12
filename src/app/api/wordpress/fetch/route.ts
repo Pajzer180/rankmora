@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import {
+  assertProjectOwnedByUser,
   requireAuthenticatedUid,
-  RouteError,
   toRouteErrorResponse,
 } from '@/lib/server/firebaseAuth';
+import { wordpressFetchRequestSchema } from '@/lib/server/schemas/wordpress';
+import { readJsonRequestBody } from '@/lib/server/validation';
 import { enforceRateLimit } from '@/lib/server/rateLimit';
 import { fetchWordPressItems } from '@/lib/wordpress/service';
-import type { WordPressFetchRequestBody } from '@/types/wordpress';
 
 export async function POST(req: Request) {
   try {
@@ -16,13 +17,16 @@ export async function POST(req: Request) {
       return rateLimitResponse;
     }
 
-    const body = (await req.json()) as WordPressFetchRequestBody;
+    const { projectId, targetType, search } = await readJsonRequestBody(
+      req,
+      wordpressFetchRequestSchema,
+    );
 
-    if (body.targetType !== 'pages' && body.targetType !== 'posts') {
-      throw new RouteError(400, 'targetType musi byc rowne pages albo posts.');
+    if (projectId) {
+      await assertProjectOwnedByUser(uid, projectId);
     }
 
-    const response = await fetchWordPressItems(uid, body.targetType, body.search);
+    const response = await fetchWordPressItems(uid, targetType, search);
     return NextResponse.json(response);
   } catch (error) {
     return toRouteErrorResponse(error);

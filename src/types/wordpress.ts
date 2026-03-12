@@ -1,8 +1,11 @@
+import type { ActionType, ChangeSource, EntityType } from '@/types/history';
+
 export type WordPressConnectionStatus = 'connected' | 'failed' | 'disconnected';
 export type WordPressJobStatus = 'preview' | 'applied' | 'failed';
 export type WordPressTargetType = 'page' | 'post';
 export type WordPressTargetTypePlural = 'pages' | 'posts';
 export type WordPressChangedField = 'title' | 'content';
+export type WordPressApplyMethod = 'POST' | 'PUT' | 'PATCH';
 
 export interface WordPressConnectionRecord {
   id: string;
@@ -73,6 +76,7 @@ export interface WordPressConnectResponse {
 }
 
 export interface WordPressFetchRequestBody {
+  projectId?: string;
   targetType: WordPressTargetTypePlural;
   search?: string;
 }
@@ -84,6 +88,7 @@ export interface WordPressFetchResponse {
 }
 
 export interface WordPressPreviewRequestBody {
+  projectId?: string;
   targetType: WordPressTargetType;
   targetId: number;
   suggestedTitle?: string;
@@ -105,9 +110,29 @@ export interface WordPressPreviewResponse {
   createdAt: string;
 }
 
-export interface WordPressApplyRequestBody {
+export interface WordPressApplyJobRequestBody {
   jobId: string;
 }
+
+export interface WordPressLegacyApplyRequestBody {
+  projectId: string;
+  siteUrl: string;
+  pageUrl: string;
+  actionType: ActionType;
+  source?: ChangeSource;
+  beforeValue?: string;
+  afterValue: string;
+  summary: string;
+  entityType?: EntityType;
+  entityId?: string | null;
+  requestId?: string | null;
+  actionId?: string | null;
+  endpoint: string;
+  method?: WordPressApplyMethod;
+  payload?: Record<string, unknown> | null;
+}
+
+export type WordPressApplyRequestBody = WordPressApplyJobRequestBody | WordPressLegacyApplyRequestBody;
 
 export interface WordPressApplyResponse {
   ok: true;
@@ -117,7 +142,7 @@ export interface WordPressApplyResponse {
 }
 
 export interface WordPressDisconnectRequestBody {
-  projectId?: string;
+  projectId: string;
 }
 
 export interface WordPressDisconnectResponse {

@@ -4,9 +4,10 @@ import {
   requireAuthenticatedUid,
   toRouteErrorResponse,
 } from '@/lib/server/firebaseAuth';
+import { wordpressTestRequestSchema } from '@/lib/server/schemas/wordpress';
+import { readJsonRequestBody } from '@/lib/server/validation';
 import { enforceRateLimit } from '@/lib/server/rateLimit';
 import { connectWordPressConnection } from '@/lib/wordpress/service';
-import type { WordPressConnectRequestBody } from '@/types/wordpress';
 
 export async function POST(req: Request) {
   try {
@@ -16,18 +17,21 @@ export async function POST(req: Request) {
       return rateLimitResponse;
     }
 
-    const body = (await req.json()) as WordPressConnectRequestBody;
+    const { projectId, siteUrl, wpUsername, applicationPassword } = await readJsonRequestBody(
+      req,
+      wordpressTestRequestSchema,
+    );
 
-    if (body.projectId) {
-      await assertProjectOwnedByUser(uid, body.projectId);
+    if (projectId) {
+      await assertProjectOwnedByUser(uid, projectId);
     }
 
     const response = await connectWordPressConnection({
       uid,
-      projectId: body.projectId ?? null,
-      siteUrl: body.siteUrl,
-      wpUsername: body.wpUsername,
-      applicationPassword: body.applicationPassword,
+      projectId: projectId ?? null,
+      siteUrl,
+      wpUsername,
+      applicationPassword,
     });
 
     return NextResponse.json(response);

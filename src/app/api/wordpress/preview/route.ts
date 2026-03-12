@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import {
+  assertProjectOwnedByUser,
   requireAuthenticatedUid,
-  RouteError,
   toRouteErrorResponse,
 } from '@/lib/server/firebaseAuth';
+import { wordpressPreviewRequestSchema } from '@/lib/server/schemas/wordpress';
+import { readJsonRequestBody } from '@/lib/server/validation';
 import { enforceRateLimit } from '@/lib/server/rateLimit';
 import { createWordPressPreviewJob } from '@/lib/wordpress/service';
-import type { WordPressPreviewRequestBody } from '@/types/wordpress';
 
 export async function POST(req: Request) {
   try {
@@ -16,18 +17,24 @@ export async function POST(req: Request) {
       return rateLimitResponse;
     }
 
-    const body = (await req.json()) as WordPressPreviewRequestBody;
+    const {
+      projectId,
+      targetType,
+      targetId,
+      suggestedTitle,
+      suggestedContent,
+    } = await readJsonRequestBody(req, wordpressPreviewRequestSchema);
 
-    if (body.targetType !== 'page' && body.targetType !== 'post') {
-      throw new RouteError(400, 'targetType musi byc rowne page albo post.');
+    if (projectId) {
+      await assertProjectOwnedByUser(uid, projectId);
     }
 
     const response = await createWordPressPreviewJob({
       uid,
-      targetType: body.targetType,
-      targetId: body.targetId,
-      suggestedTitle: body.suggestedTitle,
-      suggestedContent: body.suggestedContent,
+      targetType,
+      targetId,
+      suggestedTitle,
+      suggestedContent,
     });
 
     return NextResponse.json(response);
