@@ -40,6 +40,9 @@ Google callback routes:
 - `/api/gsc/callback`
 - `/api/search-console/callback`
 
+Internal routes:
+- `/api/cron/gsc-sync` secured by `CRON_SECRET`
+
 Shared helpers used by protected routes:
 - `requireAuthenticatedUid()` for bearer-token auth checks
 - `toRouteErrorResponse()` and `jsonErrorResponse()` for consistent JSON failures
@@ -53,6 +56,7 @@ Env vars used by this backend:
 - `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` for model-backed routes
 - `WORDPRESS_CREDENTIALS_SECRET` for encrypting stored WordPress credentials
 - `GSC_TOKENS_SECRET` for encrypting stored Google Search Console refresh tokens
+- `CRON_SECRET` for authorizing internal cron routes like `/api/cron/gsc-sync`
 - `RATE_LIMIT_*` variables from `.env.example` to override per-route limits and windows
 
 Firebase Admin layer:
@@ -72,7 +76,17 @@ Search Console storage:
 - Encrypted refresh tokens live in the server-only `search_console_connections` collection and use `GSC_TOKENS_SECRET`.
 - Short-lived OAuth state records live in `search_console_oauth_states` and are consumed on callback.
 - Non-sensitive Search Console summary data is mirrored onto `projects.{searchConsole}` for UI reads.
+- Daily cache documents are stored in `search_console_daily` with deterministic ids shaped like `{projectId}_{YYYY-MM-DD}`.
+- Page rollup cache documents are stored in `search_console_pages_28d` with deterministic ids shaped like `{projectId}_{pageHash}`.
+- Sync observability documents are stored in `search_console_sync_runs`.
 - Refresh tokens never reach the client.
+
+Search Console ingest:
+- `/api/cron/gsc-sync` iterates over connected Search Console connections, filters to projects with a selected property on the project record, refreshes access tokens, and syncs cached Search Analytics data.
+- Daily summary ingest writes one document per day for the recent 28-day window with clicks, impressions, ctr, position, and `syncedAt`.
+- Page rollup ingest writes top page rows for the same recent 28-day window and removes stale page cache docs for the project so repeated syncs stay clean.
+- Sync writes overwrite deterministic cache docs instead of duplicating raw Google responses.
+- The cron route expects `Authorization: Bearer <CRON_SECRET>` and also accepts `x-cron-secret` for manual testing.
 
 Rate limiting behavior:
 - Rate limiting is in-memory and per application instance.
@@ -97,6 +111,12 @@ Manual test plan:
 - Verify the callback writes only the non-sensitive Search Console summary to the project and does not expose refresh tokens to the client.
 - Verify `/api/gsc/sites` returns the connected account properties and refreshes the project summary.
 - Verify property selection persists to the project and rejects properties that are not in the connected Google account list.
+- Verify `/api/cron/gsc-sync` rejects missing or invalid `CRON_SECRET`.
+- Verify `/api/cron/gsc-sync` writes `search_console_daily` documents for the recent 28-day window.
+- Verify `/api/cron/gsc-sync` writes `search_console_pages_28d` documents and removes stale page cache docs for the same project.
+- Verify `search_console_sync_runs` captures both successful and failed project syncs.
+- Verify no plaintext refresh token appears in any cache collection.
+- Verify repeated syncs overwrite the same cache docs instead of creating duplicate garbage.
 - Verify chat, WordPress, and GSC rate-limited routes return `429` with `details.code = "RATE_LIMITED"` and `Retry-After`.
 - Verify `/api/chat` blocks `http://localhost`, `http://127.0.0.1`, `http://10.0.0.1`, and `http://169.254.169.254`.
 - Verify WordPress connect/test/fetch/preview/apply block private or internal site URLs with the shared blocked-or-invalid JSON response.
@@ -117,5 +137,7 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app) from the creators of Next.js.
+
+This repo includes a `vercel.json` cron entry for `/api/cron/gsc-sync` scheduled daily.
 
 Check out [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

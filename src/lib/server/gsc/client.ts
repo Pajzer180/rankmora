@@ -4,8 +4,11 @@ import { RouteError } from '@/lib/server/routeError';
 import {
   GOOGLE_OAUTH_AUTHORIZE_URL,
   GOOGLE_OAUTH_TOKEN_URL,
+  GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_URL,
   GOOGLE_SEARCH_CONSOLE_SITES_URL,
   SEARCH_CONSOLE_SCOPE,
+  type GoogleSearchAnalyticsQueryRequest,
+  type GoogleSearchAnalyticsResponse,
   type GoogleSitesListResponse,
   type GoogleTokenResponse,
   type JsonRequestOptions,
@@ -119,6 +122,36 @@ export async function listSearchConsoleProperties(accessToken: string): Promise<
   }
 
   return Array.from(unique.values()).sort((left, right) => left.siteUrl.localeCompare(right.siteUrl));
+}
+
+export async function querySearchConsoleSearchAnalytics(args: {
+  accessToken: string;
+  propertySiteUrl: string;
+  request: GoogleSearchAnalyticsQueryRequest;
+}): Promise<GoogleSearchAnalyticsResponse> {
+  const propertySiteUrl = args.propertySiteUrl.trim();
+  if (!propertySiteUrl) {
+    throw new RouteError(400, 'Brakuje wybranej wlasciwosci Search Console.', {
+      code: 'SEARCH_CONSOLE_PROPERTY_INVALID',
+      reason: 'missing-property',
+    });
+  }
+
+  const encodedSiteUrl = encodeURIComponent(propertySiteUrl);
+  return requestJson<GoogleSearchAnalyticsResponse>({
+    url: `${GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_URL}/${encodedSiteUrl}/searchAnalytics/query`,
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${args.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      ...args.request,
+      type: args.request.type ?? 'web',
+    }),
+    errorCode: 'SEARCH_CONSOLE_ANALYTICS_FAILED',
+    errorMessage: 'Nie udalo sie pobrac danych Search Analytics z Google Search Console.',
+  });
 }
 
 async function requestJson<T>(options: JsonRequestOptions): Promise<T> {

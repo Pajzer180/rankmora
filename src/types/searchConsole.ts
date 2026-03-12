@@ -4,6 +4,8 @@ export type SearchConsolePropertyPermissionLevel =
   | 'siteFullUser'
   | 'siteRestrictedUser'
   | 'siteUnverifiedUser';
+export type SearchConsoleSyncRunStatus = 'success' | 'failed';
+export type SearchConsoleProjectSyncStatus = 'synced' | 'skipped' | 'failed';
 
 export interface SearchConsolePropertySummary {
   siteUrl: string;
@@ -36,6 +38,64 @@ export interface SearchConsoleConnectionRecord {
   lastError: string | null;
 }
 
+export interface SearchConsoleDailyMetricRecord {
+  projectId: string;
+  uid: string;
+  propertySiteUrl: string;
+  date: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  source: 'gsc';
+  syncedAt: number;
+}
+
+export interface SearchConsolePageMetricRecord {
+  projectId: string;
+  uid: string;
+  propertySiteUrl: string;
+  pageUrl: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  windowDays: number;
+  startDate: string;
+  endDate: string;
+  syncedAt: number;
+}
+
+export interface SearchConsoleSyncRunRecord {
+  id: string;
+  projectId: string;
+  uid: string;
+  propertySiteUrl: string;
+  status: SearchConsoleSyncRunStatus;
+  startedAt: number;
+  finishedAt: number;
+  error: string | null;
+  counts: SearchConsoleProjectSyncCounts;
+}
+
+export interface SearchConsoleProjectSyncCounts {
+  dailyDocumentsWritten: number;
+  pageDocumentsWritten: number;
+  pageDocumentsDeleted: number;
+}
+
+export interface SearchConsoleProjectSyncResult {
+  projectId: string;
+  uid: string | null;
+  propertySiteUrl: string | null;
+  status: SearchConsoleProjectSyncStatus;
+  reason?: string;
+  error?: string;
+  startDate?: string;
+  endDate?: string;
+  counts?: SearchConsoleProjectSyncCounts;
+}
+
 export interface SearchConsoleConnectRequestBody {
   projectId: string;
   returnTo?: string;
@@ -65,4 +125,19 @@ export interface SearchConsoleSelectPropertyRequestBody {
 export interface SearchConsoleSelectPropertyResponse {
   ok: true;
   selectedPropertyUrl: string;
+}
+
+export interface SearchConsoleCronSyncResponse {
+  ok: true;
+  startedAt: number;
+  finishedAt: number;
+  totalConnections: number;
+  eligibleProjects: number;
+  syncedProjects: number;
+  skippedProjects: number;
+  failedProjects: number;
+  dailyDocumentsWritten: number;
+  pageDocumentsWritten: number;
+  pageDocumentsDeleted: number;
+  results: SearchConsoleProjectSyncResult[];
 }

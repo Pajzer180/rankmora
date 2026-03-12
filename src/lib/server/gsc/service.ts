@@ -12,7 +12,14 @@ import {
   consumeSearchConsoleOAuthState,
   createSearchConsoleOAuthState,
 } from '@/lib/server/gsc/oauthState';
-import { SEARCH_CONSOLE_SCOPE, type SearchConsoleCallbackArgs, type SearchConsoleCallbackResult, type SearchConsoleSitesResult, type StartSearchConsoleConnectionArgs } from '@/lib/server/gsc/types';
+import {
+  SEARCH_CONSOLE_SCOPE,
+  type SearchConsoleCallbackArgs,
+  type SearchConsoleCallbackResult,
+  type SearchConsoleSitesResult,
+  type SearchConsoleSyncContext,
+  type StartSearchConsoleConnectionArgs,
+} from '@/lib/server/gsc/types';
 import {
   getSearchConsoleConnection,
   getSearchConsoleProject,
@@ -194,6 +201,48 @@ export async function getSearchConsoleSites(projectId: string): Promise<SearchCo
 
     throw routeError;
   }
+}
+
+export async function getSearchConsoleSyncContext(projectId: string): Promise<SearchConsoleSyncContext> {
+  const project = await getSearchConsoleProject(projectId);
+  if (!project) {
+    throw new RouteError(404, 'Project not found.', {
+      code: 'SEARCH_CONSOLE_PROJECT_NOT_FOUND',
+    });
+  }
+
+  const connection = await getSearchConsoleConnection(projectId);
+  if (!connection || connection.status !== 'connected') {
+    throw new RouteError(409, 'Najpierw polacz Google Search Console dla tego projektu.', {
+      code: 'SEARCH_CONSOLE_NOT_CONNECTED',
+    });
+  }
+
+  const propertySiteUrl = project.searchConsole?.selectedPropertyUrl?.trim() ?? '';
+  if (!propertySiteUrl) {
+    throw new RouteError(409, 'Brakuje wybranej wlasciwosci Search Console dla projektu.', {
+      code: 'SEARCH_CONSOLE_PROPERTY_INVALID',
+      reason: 'missing-selected-property',
+    });
+  }
+
+  const refreshToken = decryptGscSecret(connection.refreshTokenEncrypted);
+  const tokenResponse = await refreshSearchConsoleAccessToken(refreshToken);
+  const accessToken = tokenResponse.access_token?.trim();
+
+  if (!accessToken) {
+    throw new RouteError(502, 'Google nie zwrocil access token dla Search Console.', {
+      code: 'SEARCH_CONSOLE_REFRESH_FAILED',
+      reason: 'missing-access-token',
+    });
+  }
+
+  return {
+    project,
+    connection,
+    propertySiteUrl,
+    accessToken,
+  };
 }
 
 export async function selectSearchConsoleProperty(
