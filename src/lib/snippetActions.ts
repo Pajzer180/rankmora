@@ -9,6 +9,7 @@ import {
   getDocs,
 } from 'firebase/firestore';
 import { getClientDb } from '@/lib/firebase';
+import type { ProjectSearchConsoleState } from '@/types/searchConsole';
 
 export interface ProjectWordPressState {
   siteUrl: string;
@@ -29,6 +30,7 @@ export interface Project {
   snippetEnabled: boolean;
   snippetCreatedAt: number | null;
   wordpress?: ProjectWordPressState | null;
+  searchConsole?: ProjectSearchConsoleState | null;
   createdAt: number;
   updatedAt: number;
 }
