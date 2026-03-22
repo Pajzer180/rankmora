@@ -17,7 +17,8 @@ export type RateLimitScope =
   | 'gsc-sites'
   | 'gsc-select-site'
   | 'gsc-summary'
-  | 'gsc-pages';
+  | 'gsc-pages'
+  | 'gsc-sync';
 
 interface RateLimitPolicyDefinition {
   bucket: string;
@@ -130,6 +131,12 @@ const POLICY_DEFINITIONS: Record<RateLimitScope, RateLimitPolicyDefinition> = {
     envPrefix: 'RATE_LIMIT_GSC_PAGES',
     defaultMax: 60,
     defaultWindowMs: 60_000,
+  },
+  'gsc-sync': {
+    bucket: 'gsc-sync',
+    envPrefix: 'RATE_LIMIT_GSC_SYNC',
+    defaultMax: 3,
+    defaultWindowMs: 300_000,
   },
 };
 

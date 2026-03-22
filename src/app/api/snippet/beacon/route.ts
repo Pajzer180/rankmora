@@ -7,6 +7,8 @@ import {
 import { snippetBeaconBodySchema } from '@/lib/server/schemas/snippet';
 import { readJsonRequestBody } from '@/lib/server/validation';
 
+// LEGACY — JS snippet serwowany klientom. Nowy core oparty jest o WordPress API + GSC.
+
 function toBeaconErrorResponse(error: unknown) {
   if (error instanceof RouteError) {
     return jsonErrorResponse(

@@ -1,3 +1,5 @@
+// LEGACY — akcje snippetowe (generowanie tokena, status instalacji). Część z tych funkcji jest nadal używana do pobierania domyślnego projektu.
+
 import {
   doc,
   setDoc,
@@ -51,22 +53,103 @@ export interface SiteInstall {
   pingCount: number;
 }
 
+interface ProjectProfileInput {
+  projectName?: string;
+  companyName?: string;
+  domain: string;
+}
+
+function normalizeComparableString(value?: string | null): string {
+  return value?.trim().toLowerCase() ?? '';
+}
+
+function normalizeComparableDomain(value?: string | null): string {
+  const trimmed = normalizeComparableString(value);
+  if (!trimmed) {
+    return '';
+  }
+
+  const withoutProtocol = trimmed.replace(/^https?:\/\//, '');
+  const hostname = withoutProtocol.split(/[/?#]/, 1)[0] ?? '';
+  return hostname.replace(/^www\./, '').replace(/\.$/, '');
+}
+
+function getProjectSelectionPriority(project: Project, profile: ProjectProfileInput): number[] {
+  const profileDomain = normalizeComparableDomain(profile.domain);
+  const projectDomain = normalizeComparableDomain(project.domain);
+  const preferredNames = [profile.projectName, profile.companyName]
+    .map((value) => normalizeComparableString(value))
+    .filter(Boolean);
+  const projectName = normalizeComparableString(project.name);
+
+  const exactDomainMatch = Number(Boolean(profileDomain) && projectDomain === profileDomain);
+  const partialDomainMatch = Number(
+    !exactDomainMatch
+      && Boolean(profileDomain)
+      && Boolean(projectDomain)
+      && (
+        projectDomain.endsWith(`.${profileDomain}`)
+        || profileDomain.endsWith(`.${projectDomain}`)
+      ),
+  );
+  const exactNameMatch = Number(preferredNames.includes(projectName));
+  const hasWordPressConnected = Number(project.wordpress?.status === 'connected');
+  const hasWordPressState = Number(Boolean(project.wordpress));
+  const hasSearchConsoleConnected = Number(project.searchConsole?.status === 'connected');
+  const hasSearchConsoleState = Number(Boolean(project.searchConsole));
+  const hasSnippetToken = Number(Boolean(project.snippetToken));
+
+  return [
+    exactDomainMatch,
+    partialDomainMatch,
+    exactNameMatch,
+    hasWordPressConnected,
+    hasWordPressState,
+    hasSearchConsoleConnected,
+    hasSearchConsoleState,
+    hasSnippetToken,
+    project.updatedAt ?? 0,
+    project.createdAt ?? 0,
+  ];
+}
+
+function compareProjectPriority(left: Project, right: Project, profile: ProjectProfileInput): number {
+  const leftPriority = getProjectSelectionPriority(left, profile);
+  const rightPriority = getProjectSelectionPriority(right, profile);
+
+  for (let index = 0; index < leftPriority.length; index += 1) {
+    const diff = rightPriority[index] - leftPriority[index];
+    if (diff !== 0) {
+      return diff;
+    }
+  }
+
+  return right.id.localeCompare(left.id);
+}
+
+function selectBestProject(projects: Project[], profile: ProjectProfileInput): Project {
+  return [...projects].sort((left, right) => compareProjectPriority(left, right, profile))[0];
+}
+
 export async function getOrCreateDefaultProject(
   uid: string,
-  profile: { projectName?: string; companyName?: string; domain: string },
+  profile: ProjectProfileInput,
 ): Promise<Project> {
   const db = getClientDb();
 
   const projectsQuery = query(
     collection(db, 'projects'),
     where('uid', '==', uid),
-    limit(1),
   );
   const snapshot = await getDocs(projectsQuery);
 
   if (!snapshot.empty) {
-    const existingProject = snapshot.docs[0];
-    return { id: existingProject.id, ...existingProject.data() } as Project;
+    const existingProjects = snapshot.docs.map((projectDoc) => ({
+      id: projectDoc.id,
+      ...(projectDoc.data() as Omit<Project, 'id'>),
+    } as Project));
+
+    return selectBestProject(existingProjects, profile);
   }
 
   const now = Date.now();

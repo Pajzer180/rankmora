@@ -59,10 +59,22 @@ export interface GoogleSitesListResponse {
   }>;
 }
 
+export interface GoogleSearchAnalyticsDimensionFilter {
+  dimension: 'country' | 'device' | 'page' | 'query' | 'searchAppearance';
+  operator: 'contains' | 'equals' | 'notContains' | 'notEquals' | 'includingRegex' | 'excludingRegex';
+  expression: string;
+}
+
+export interface GoogleSearchAnalyticsDimensionFilterGroup {
+  groupType?: 'and';
+  filters: GoogleSearchAnalyticsDimensionFilter[];
+}
+
 export interface GoogleSearchAnalyticsQueryRequest {
   startDate: string;
   endDate: string;
   dimensions?: Array<'date' | 'page' | 'query'>;
+  dimensionFilterGroups?: GoogleSearchAnalyticsDimensionFilterGroup[];
   rowLimit?: number;
   startRow?: number;
   type?: 'web' | 'image' | 'video' | 'news' | 'googleNews' | 'discover';

@@ -1,26 +1,26 @@
 'use client';
 
 import { motion, type Variants } from 'framer-motion';
-import { Bot, BarChart2, Code2 } from 'lucide-react';
+import { MessageSquare, GitCompareArrows, TrendingUp } from 'lucide-react';
 
 const features = [
   {
-    icon: Bot,
-    title: 'Autonomiczny Agent',
+    icon: MessageSquare,
+    title: 'Agent w chacie',
     description:
-      'Podłączasz skrypt raz. Agent samodzielnie weryfikuje nagłówki H1/H2 i podmienia je na najbardziej konwertujące wersje.',
+      'Porozmawiaj z AI, które zna Twoje dane z Search Console i proponuje konkretne zmiany.',
   },
   {
-    icon: BarChart2,
-    title: 'Analiza Intencji z GSC',
+    icon: GitCompareArrows,
+    title: 'Podgląd i wdrożenie',
     description:
-      'Pobieramy dane z Google Search Console, aby zrozumieć, czego dokładnie szukają Twoi klienci.',
+      'Przed zmianą widzisz porównanie before/after. Po akceptacji agent wdraża zmianę w WordPress.',
   },
   {
-    icon: Code2,
-    title: 'Zero ingerencji w backend',
+    icon: TrendingUp,
+    title: 'Pomiar efektu i rollback',
     description:
-      'Zastosowane zmiany renderują się w locie w DOM. Nie potrzebujesz dostępu do bazy danych ani dewelopera.',
+      'Agent mierzy wpływ zmian po 7, 14 i 30 dniach. Jednym kliknięciem cofniesz każdą zmianę.',
   },
 ];
 
@@ -48,11 +48,10 @@ export default function FeaturesSection() {
           className="text-center mb-12"
         >
           <h2 className="text-4xl font-bold text-white tracking-tight">
-            Twój nowy silnik SEO.
+            Wszystko czego potrzebujesz do SEO.
           </h2>
           <p className="mt-4 text-lg text-slate-400 max-w-2xl mx-auto">
-            Bress.io analizuje intencje i sam dopasowuje strukturę Twojej strony.
-            W czasie rzeczywistym.
+            Bress.io łączy dane z Google Search Console z mocą AI, żebyś mógł optymalizować WordPress bez zgadywania.
           </p>
         </motion.div>
 

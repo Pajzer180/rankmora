@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { getClientDb } from '@/lib/firebase';
 
+// LEGACY — endpoint serwujący akcje SEO dla JS snippetu. Nowy core nie używa snippetu.
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',

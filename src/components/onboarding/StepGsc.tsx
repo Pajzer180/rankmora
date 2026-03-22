@@ -40,11 +40,27 @@ function getSearchConsoleFeedback(
 
   switch (reason) {
     case 'oauth-denied':
-      return { type: 'error', message: 'Polaczenie z Google zostalo anulowane.' };
+      return { type: 'error', message: 'Polaczenie z Google zostalo anulowane. Kliknij ponownie i zaakceptuj uprawnienia.' };
     case 'oauth-error':
-      return { type: 'error', message: 'Google zwrocil blad podczas autoryzacji.' };
+      return { type: 'error', message: 'Google zwrocil blad podczas autoryzacji. Sprobuj ponownie.' };
+    case 'token-exchange-failed':
+      return { type: 'error', message: 'Nie udalo sie wymienic kodu autoryzacji na token. Sprawdz konfiguracje OAuth (Client ID, Secret, Redirect URI) w Google Cloud Console.' };
+    case 'missing-access-token':
+      return { type: 'error', message: 'Google nie zwrocil tokenu dostepu. Sprobuj ponownie.' };
+    case 'missing-refresh-token':
+      return { type: 'error', message: 'Google nie zwrocil refresh tokenu. Usun Bress.io z uprawnien w koncie Google (myaccount.google.com/permissions), a nastepnie polacz ponownie.' };
+    case 'properties-failed':
+      return { type: 'error', message: 'Nie udalo sie pobrac listy stron z Search Console. Sprawdz czy masz properties w Google Search Console.' };
+    case 'encryption-config-missing':
+      return { type: 'error', message: 'Brak konfiguracji szyfrowania tokenow (GSC_TOKENS_SECRET). Skontaktuj sie z administratorem.' };
+    case 'state-invalid':
+      return { type: 'error', message: 'Sesja autoryzacji wygasla lub jest nieprawidlowa. Sprobuj ponownie.' };
+    case 'missing-params':
+      return { type: 'error', message: 'Brakuje parametrow w odpowiedzi OAuth. Sprawdz konfiguracje Redirect URI w Google Cloud Console.' };
+    case 'rate-limited':
+      return { type: 'error', message: 'Zbyt wiele prob polaczenia. Poczekaj chwile i sprobuj ponownie.' };
     case 'callback-failed':
-      return { type: 'error', message: 'Nie udalo sie dokonczyc polaczenia z Google Search Console.' };
+      return { type: 'error', message: 'Nie udalo sie dokonczyc polaczenia z Google Search Console. Sprawdz logi serwera.' };
     default:
       return { type: 'error', message: 'Wystapil blad podczas laczenia z Google Search Console.' };
   }

@@ -21,16 +21,29 @@ export function readSearchConsoleConfig(): SearchConsoleConfig {
   const clientSecret = process.env.GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET?.trim();
   const redirectUri = process.env.GOOGLE_SEARCH_CONSOLE_REDIRECT_URI?.trim();
 
-  if (!clientId || !clientSecret || !redirectUri) {
-    throw new RouteError(500, 'Integracja Google Search Console nie jest skonfigurowana.', {
+  const missing: string[] = [];
+  if (!clientId) missing.push('GOOGLE_SEARCH_CONSOLE_CLIENT_ID');
+  if (!clientSecret) missing.push('GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET');
+  if (!redirectUri) missing.push('GOOGLE_SEARCH_CONSOLE_REDIRECT_URI');
+
+  if (missing.length > 0) {
+    console.error('[GSC Config] Brakuje zmiennych srodowiskowych: %s', missing.join(', '));
+    throw new RouteError(500, `Integracja Google Search Console nie jest skonfigurowana. Brakuje: ${missing.join(', ')}.`, {
       code: 'SEARCH_CONSOLE_CONFIG_ERROR',
+      missingVars: missing,
     });
   }
 
+  // Validate GSC_TOKENS_SECRET at config read time so we fail fast
+  const gscTokensSecret = process.env.GSC_TOKENS_SECRET?.trim();
+  if (!gscTokensSecret) {
+    console.error('[GSC Config] Brakuje GSC_TOKENS_SECRET — nie bedzie mozna zaszyfrowac refresh tokena.');
+  }
+
   return {
-    clientId,
-    clientSecret,
-    redirectUri,
+    clientId: clientId!,
+    clientSecret: clientSecret!,
+    redirectUri: redirectUri!,
   };
 }
 
@@ -180,10 +193,13 @@ async function requestJson<T>(options: JsonRequestOptions): Promise<T> {
     }
 
     if (!response.ok) {
+      const providerError = extractProviderError(parsed);
+      console.error('[GSC Client] Blad HTTP %d od Google API (%s): %s',
+        response.status, options.url, providerError ?? '(brak opisu bledu)');
       throw new RouteError(502, options.errorMessage, {
         code: options.errorCode,
         providerStatus: response.status,
-        providerError: extractProviderError(parsed),
+        providerError,
       });
     }
 

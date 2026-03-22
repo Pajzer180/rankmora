@@ -54,11 +54,11 @@ export default function HeroSection() {
           </div>
 
           <h1 className="mt-6 bg-gradient-to-b from-white to-white/70 bg-clip-text text-5xl font-bold tracking-tight text-transparent sm:text-6xl lg:text-7xl">
-            Wystrzel CTR w górę.<br />Zero zmian w kodzie.
+            Twój asystent SEO<br />oparty o AI.
           </h1>
 
           <p className="mt-5 max-w-xl mx-auto text-lg text-white/60">
-            Analizuj intencje klientów i automatycznie optymalizuj ich strony WWW pod SEO.
+            Podłącz WordPress i Search Console, porozmawiaj z agentem, wdróż zmiany jednym kliknięciem.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-4">

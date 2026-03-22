@@ -44,6 +44,8 @@ export async function createSearchConsoleOAuthState(args: {
   };
 
   await stateDoc(token).set(record);
+  console.log('[GSC OAuthState] Utworzono state token dla projectId=%s, returnTo=%s, wygasa=%s',
+    args.projectId, record.returnTo, record.expiresAt);
   return token;
 }
 
@@ -64,6 +66,7 @@ export async function consumeSearchConsoleOAuthState(token: string): Promise<Sea
   });
 
   if (!result.exists) {
+    console.warn('[GSC OAuthState] State token nie znaleziony w Firestore (moze wygasl lub zuzyt podwojnie).');
     throw new RouteError(400, 'Invalid Search Console OAuth state.', {
       code: 'SEARCH_CONSOLE_STATE_INVALID',
       reason: 'unknown-state',
@@ -87,6 +90,7 @@ export async function consumeSearchConsoleOAuthState(token: string): Promise<Sea
 
   const expiresAt = Date.parse(data.expiresAt);
   if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    console.warn('[GSC OAuthState] State wygasl. expiresAt=%s, now=%s', data.expiresAt, new Date().toISOString());
     throw new RouteError(400, 'Search Console OAuth state expired.', {
       code: 'SEARCH_CONSOLE_STATE_INVALID',
       reason: 'expired-state',

@@ -5,24 +5,18 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import {
   BarChart2,
-  Target,
   MessageSquare,
-  History,
-  Layout,
+  GitCompare,
   Settings,
   LogOut,
   Globe,
   ChevronRight,
-  Code,
 } from 'lucide-react';
 
 const NAV_LINKS = [
   { label: 'Analityka',   href: '/dashboard/analityka',   icon: BarChart2     },
-  { label: 'Cele',        href: '/dashboard/cele',         icon: Target        },
   { label: 'Chat',        href: '/dashboard/chat',         icon: MessageSquare },
-  { label: 'Historia',    href: '/dashboard/historia',     icon: History       },
-  { label: 'Strona',      href: '/dashboard/strona',       icon: Layout        },
-  { label: 'Instalacja',  href: '/dashboard/instalacja',   icon: Code          },
+  { label: 'Zmiany',      href: '/dashboard/zmiany',       icon: GitCompare    },
   { label: 'Ustawienia',  href: '/dashboard/ustawienia',   icon: Settings      },
 ];
 

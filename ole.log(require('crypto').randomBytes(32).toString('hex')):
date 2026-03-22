@@ -1,0 +1,101 @@
+[35m.env.example[m[36m:[m[32m15[m[36m:[mGOOGLE_[1;31mSEARCH_CONSOLE[m_CLIENT_ID=your_google_oauth_client_id
+[35m.env.example[m[36m:[m[32m16[m[36m:[mGOOGLE_[1;31mSEARCH_CONSOLE[m_CLIENT_SECRET=your_google_oauth_client_secret
+[35m.env.example[m[36m:[m[32m17[m[36m:[mGOOGLE_[1;31mSEARCH_CONSOLE[m_REDIRECT_URI=http://localhost:3000/api/gsc/callback
+[35m.env.example[m[36m:[m[32m25[m[36m:[m[1;31mGSC_[mTOKENS_SECRET=replace_with_a_different_random_32_plus_char_secret_for_gsc_tokens
+[35m.env.example[m[36m:[m[32m45[m[36m:[mRATE_LIMIT_[1;31mGSC_[mCONNECT_MAX=10
+[35m.env.example[m[36m:[m[32m46[m[36m:[mRATE_LIMIT_[1;31mGSC_[mCONNECT_WINDOW_MS=300000
+[35m.env.example[m[36m:[m[32m47[m[36m:[mRATE_LIMIT_[1;31mGSC_[mCALLBACK_MAX=20
+[35m.env.example[m[36m:[m[32m48[m[36m:[mRATE_LIMIT_[1;31mGSC_[mCALLBACK_WINDOW_MS=300000
+[35m.env.example[m[36m:[m[32m49[m[36m:[mRATE_LIMIT_[1;31mGSC_[mSITES_MAX=30
+[35m.env.example[m[36m:[m[32m50[m[36m:[mRATE_LIMIT_[1;31mGSC_[mSITES_WINDOW_MS=60000
+[35m.env.example[m[36m:[m[32m51[m[36m:[mRATE_LIMIT_[1;31mGSC_[mSELECT_SITE_MAX=20
+[35m.env.example[m[36m:[m[32m52[m[36m:[mRATE_LIMIT_[1;31mGSC_[mSELECT_SITE_WINDOW_MS=60000
+[35mREADME.md[m[36m:[m[32m55[m[36m:[m- `GOOGLE_[1;31mSEARCH_CONSOLE[m_CLIENT_ID`, `GOOGLE_[1;31mSEARCH_CONSOLE[m_CLIENT_SECRET`, and `GOOGLE_[1;31mSEARCH_CONSOLE[m_REDIRECT_URI` for the Google Search Console OAuth flow
+[35mREADME.md[m[36m:[m[32m58[m[36m:[m- `[1;31mGSC_[mTOKENS_SECRET` for encrypting stored Google Search Console refresh tokens
+[35mREADME.md[m[36m:[m[32m76[m[36m:[m- Encrypted refresh tokens live in the server-only `search_console_connections` collection and use `[1;31mGSC_[mTOKENS_SECRET`.
+[35msrc/lib/server/gsc/client.ts[m[36m:[m[32m7[m[36m:[m  GOOGLE_[1;31mSEARCH_CONSOLE[m_SEARCH_ANALYTICS_URL,
+[35msrc/lib/server/gsc/client.ts[m[36m:[m[32m8[m[36m:[m  GOOGLE_[1;31mSEARCH_CONSOLE[m_SITES_URL,
+[35msrc/lib/server/gsc/client.ts[m[36m:[m[32m9[m[36m:[m  [1;31mSEARCH_CONSOLE[m_SCOPE,
+[35msrc/lib/server/gsc/client.ts[m[36m:[m[32m20[m[36m:[m  const clientId = process.env.GOOGLE_[1;31mSEARCH_CONSOLE[m_CLIENT_ID?.trim();
+[35msrc/lib/server/gsc/client.ts[m[36m:[m[32m21[m[36m:[m  const clientSecret = process.env.GOOGLE_[1;31mSEARCH_CONSOLE[m_CLIENT_SECRET?.trim();
+[35msrc/lib/server/gsc/client.ts[m[36m:[m[32m22[m[36m:[m  const redirectUri = process.env.GOOGLE_[1;31mSEARCH_CONSOLE[m_REDIRECT_URI?.trim();
+[35msrc/lib/server/gsc/client.ts[m[36m:[m[32m26[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_CONFIG_ERROR',
+[35msrc/lib/server/gsc/client.ts[m[36m:[m[32m44[m[36m:[m  authorizationUrl.searchParams.set('scope', [1;31mSEARCH_CONSOLE[m_SCOPE);
+[35msrc/lib/server/gsc/client.ts[m[36m:[m[32m70[m[36m:[m    errorCode: '[1;31mSEARCH_CONSOLE[m_OAUTH_FAILED',
+[35msrc/lib/server/gsc/client.ts[m[36m:[m[32m91[m[36m:[m    errorCode: '[1;31mSEARCH_CONSOLE[m_REFRESH_FAILED',
+[35msrc/lib/server/gsc/client.ts[m[36m:[m[32m98[m[36m:[m    url: GOOGLE_[1;31mSEARCH_CONSOLE[m_SITES_URL,
+[35msrc/lib/server/gsc/client.ts[m[36m:[m[32m103[m[36m:[m    errorCode: '[1;31mSEARCH_CONSOLE[m_PROPERTIES_FAILED',
+[35msrc/lib/server/gsc/client.ts[m[36m:[m[32m135[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_PROPERTY_INVALID',
+[35msrc/lib/server/gsc/client.ts[m[36m:[m[32m142[m[36m:[m    url: `${GOOGLE_[1;31mSEARCH_CONSOLE[m_SEARCH_ANALYTICS_URL}/${encodedSiteUrl}/searchAnalytics/query`,
+[35msrc/lib/server/gsc/client.ts[m[36m:[m[32m152[m[36m:[m    errorCode: '[1;31mSEARCH_CONSOLE[m_ANALYTICS_FAILED',
+[35msrc/lib/server/gsc/ingest.ts[m[36m:[m[32m6[m[36m:[m  [1;31mSEARCH_CONSOLE[m_DATA_LAG_DAYS,
+[35msrc/lib/server/gsc/ingest.ts[m[36m:[m[32m7[m[36m:[m  [1;31mSEARCH_CONSOLE[m_PAGE_ROW_LIMIT,
+[35msrc/lib/server/gsc/ingest.ts[m[36m:[m[32m8[m[36m:[m  [1;31mSEARCH_CONSOLE[m_SYNC_WINDOW_DAYS,
+[35msrc/lib/server/gsc/ingest.ts[m[36m:[m[32m181[m[36m:[m  const endDate = addUtcDays(startOfUtcDay(new Date()), -[1;31mSEARCH_CONSOLE[m_DATA_LAG_DAYS);
+[35msrc/lib/server/gsc/ingest.ts[m[36m:[m[32m182[m[36m:[m  const startDate = addUtcDays(endDate, -([1;31mSEARCH_CONSOLE[m_SYNC_WINDOW_DAYS - 1));
+[35msrc/lib/server/gsc/ingest.ts[m[36m:[m[32m187[m[36m:[m    windowDays: [1;31mSEARCH_CONSOLE[m_SYNC_WINDOW_DAYS,
+[35msrc/lib/server/gsc/ingest.ts[m[36m:[m[32m220[m[36m:[m      rowLimit: [1;31mSEARCH_CONSOLE[m_PAGE_ROW_LIMIT,
+[35msrc/lib/server/gsc/ingest.ts[m[36m:[m[32m340[m[36m:[m    code: '[1;31mSEARCH_CONSOLE[m_SYNC_FAILED',
+[35msrc/lib/server/gsc/ingest.ts[m[36m:[m[32m373[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_SYNC_DATE_INVALID',
+[35msrc/lib/server/gsc/oauthState.ts[m[36m:[m[32m7[m[36m:[m  DEFAULT_[1;31mSEARCH_CONSOLE[m_RETURN_TO,
+[35msrc/lib/server/gsc/oauthState.ts[m[36m:[m[32m8[m[36m:[m  [1;31mSEARCH_CONSOLE[m_OAUTH_STATES_COLLECTION,
+[35msrc/lib/server/gsc/oauthState.ts[m[36m:[m[32m9[m[36m:[m  [1;31mSEARCH_CONSOLE[m_STATE_MAX_AGE_MS,
+[35msrc/lib/server/gsc/oauthState.ts[m[36m:[m[32m15[m[36m:[m  return getFirestoreAdmin().collection([1;31mSEARCH_CONSOLE[m_OAUTH_STATES_COLLECTION).doc(token);
+[35msrc/lib/server/gsc/oauthState.ts[m[36m:[m[32m21[m[36m:[m    return DEFAULT_[1;31mSEARCH_CONSOLE[m_RETURN_TO;
+[35msrc/lib/server/gsc/oauthState.ts[m[36m:[m[32m28[m[36m:[m  return DEFAULT_[1;31mSEARCH_CONSOLE[m_RETURN_TO;
+[35msrc/lib/server/gsc/oauthState.ts[m[36m:[m[32m43[m[36m:[m    expiresAt: new Date(now + [1;31mSEARCH_CONSOLE[m_STATE_MAX_AGE_MS).toISOString(),
+[35msrc/lib/server/gsc/oauthState.ts[m[36m:[m[32m54[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_STATE_INVALID',
+[35msrc/lib/server/gsc/oauthState.ts[m[36m:[m[32m68[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_STATE_INVALID',
+[35msrc/lib/server/gsc/oauthState.ts[m[36m:[m[32m83[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_STATE_INVALID',
+[35msrc/lib/server/gsc/oauthState.ts[m[36m:[m[32m91[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_STATE_INVALID',
+[35msrc/lib/server/gsc/read.ts[m[36m:[m[32m4[m[36m:[m  [1;31mSEARCH_CONSOLE[m_SYNC_WINDOW_DAYS,
+[35msrc/lib/server/gsc/read.ts[m[36m:[m[32m30[m[36m:[m  const recentDailyMetrics = takeMostRecentDailyMetrics(dailyMetrics, [1;31mSEARCH_CONSOLE[m_SYNC_WINDOW_DAYS);
+[35msrc/lib/server/gsc/read.ts[m[36m:[m[32m40[m[36m:[m    windowDays: [1;31mSEARCH_CONSOLE[m_SYNC_WINDOW_DAYS,
+[35msrc/lib/server/gsc/read.ts[m[36m:[m[32m80[m[36m:[m    ?? [1;31mSEARCH_CONSOLE[m_SYNC_WINDOW_DAYS;
+[35msrc/lib/server/gsc/service.ts[m[36m:[m[32m16[m[36m:[m  [1;31mSEARCH_CONSOLE[m_SCOPE,
+[35msrc/lib/server/gsc/service.ts[m[36m:[m[32m53[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_PROJECT_FORBIDDEN',
+[35msrc/lib/server/gsc/service.ts[m[36m:[m[32m76[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_CALLBACK_INVALID',
+[35msrc/lib/server/gsc/service.ts[m[36m:[m[32m87[m[36m:[m        code: '[1;31mSEARCH_CONSOLE[m_OAUTH_FAILED',
+[35msrc/lib/server/gsc/service.ts[m[36m:[m[32m104[m[36m:[m      scope: tokenResponse.scope?.trim() || existingConnection?.scope || [1;31mSEARCH_CONSOLE[m_SCOPE,
+[35msrc/lib/server/gsc/service.ts[m[36m:[m[32m141[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_PROJECT_NOT_FOUND',
+[35msrc/lib/server/gsc/service.ts[m[36m:[m[32m148[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_NOT_CONNECTED',
+[35msrc/lib/server/gsc/service.ts[m[36m:[m[32m159[m[36m:[m        code: '[1;31mSEARCH_CONSOLE[m_REFRESH_FAILED',
+[35msrc/lib/server/gsc/service.ts[m[36m:[m[32m210[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_PROJECT_NOT_FOUND',
+[35msrc/lib/server/gsc/service.ts[m[36m:[m[32m217[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_NOT_CONNECTED',
+[35msrc/lib/server/gsc/service.ts[m[36m:[m[32m224[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_PROPERTY_INVALID',
+[35msrc/lib/server/gsc/service.ts[m[36m:[m[32m235[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_REFRESH_FAILED',
+[35msrc/lib/server/gsc/service.ts[m[36m:[m[32m255[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_NOT_CONNECTED',
+[35msrc/lib/server/gsc/service.ts[m[36m:[m[32m262[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_PROPERTY_INVALID',
+[35msrc/lib/server/gsc/service.ts[m[36m:[m[32m269[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_PROPERTY_INVALID',
+[35msrc/lib/server/gsc/service.ts[m[36m:[m[32m377[m[36m:[m    code: '[1;31mSEARCH_CONSOLE[m_OAUTH_FAILED',
+[35msrc/lib/server/gsc/service.ts[m[36m:[m[32m494[m[36m:[m    code: '[1;31mSEARCH_CONSOLE[m_UNKNOWN_ERROR',
+[35msrc/lib/server/gsc/storage.ts[m[36m:[m[32m8[m[36m:[m  [1;31mSEARCH_CONSOLE[m_DAILY_COLLECTION,
+[35msrc/lib/server/gsc/storage.ts[m[36m:[m[32m9[m[36m:[m  [1;31mSEARCH_CONSOLE[m_PAGES_28D_COLLECTION,
+[35msrc/lib/server/gsc/storage.ts[m[36m:[m[32m10[m[36m:[m  [1;31mSEARCH_CONSOLE[m_SYNC_RUNS_COLLECTION,
+[35msrc/lib/server/gsc/storage.ts[m[36m:[m[32m27[m[36m:[m  return getFirestoreAdmin().collection([1;31mSEARCH_CONSOLE[m_DAILY_COLLECTION);
+[35msrc/lib/server/gsc/storage.ts[m[36m:[m[32m31[m[36m:[m  return getFirestoreAdmin().collection([1;31mSEARCH_CONSOLE[m_PAGES_28D_COLLECTION);
+[35msrc/lib/server/gsc/storage.ts[m[36m:[m[32m35[m[36m:[m  return getFirestoreAdmin().collection([1;31mSEARCH_CONSOLE[m_SYNC_RUNS_COLLECTION);
+[35msrc/lib/server/gsc/storage.ts[m[36m:[m[32m54[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_PROJECT_NOT_FOUND',
+[35msrc/lib/server/gsc/storage.ts[m[36m:[m[32m61[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_NOT_CONNECTED',
+[35msrc/lib/server/gsc/storage.ts[m[36m:[m[32m68[m[36m:[m      code: '[1;31mSEARCH_CONSOLE[m_PROPERTY_INVALID',
+[35msrc/lib/server/gsc/types.ts[m[36m:[m[32m16[m[36m:[mexport const GOOGLE_[1;31mSEARCH_CONSOLE[m_SITES_URL = 'https://www.googleapis.com/webmasters/v3/sites';
+[35msrc/lib/server/gsc/types.ts[m[36m:[m[32m17[m[36m:[mexport const GOOGLE_[1;31mSEARCH_CONSOLE[m_SEARCH_ANALYTICS_URL = 'https://www.googleapis.com/webmasters/v3/sites';
+[35msrc/lib/server/gsc/types.ts[m[36m:[m[32m18[m[36m:[mexport const [1;31mSEARCH_CONSOLE[m_SCOPE = 'https://www.googleapis.com/auth/webmasters.readonly';
+[35msrc/lib/server/gsc/types.ts[m[36m:[m[32m19[m[36m:[mexport const [1;31mSEARCH_CONSOLE[m_STATE_MAX_AGE_MS = 10 * 60 * 1000;
+[35msrc/lib/server/gsc/types.ts[m[36m:[m[32m20[m[36m:[mexport const DEFAULT_[1;31mSEARCH_CONSOLE[m_RETURN_TO = '/dashboard/analityka';
+[35msrc/lib/server/gsc/types.ts[m[36m:[m[32m21[m[36m:[mexport const [1;31mSEARCH_CONSOLE[m_OAUTH_STATES_COLLECTION = 'search_console_oauth_states';
+[35msrc/lib/server/gsc/types.ts[m[36m:[m[32m22[m[36m:[mexport const [1;31mSEARCH_CONSOLE[m_DAILY_COLLECTION = 'search_console_daily';
+[35msrc/lib/server/gsc/types.ts[m[36m:[m[32m23[m[36m:[mexport const [1;31mSEARCH_CONSOLE[m_PAGES_28D_COLLECTION = 'search_console_pages_28d';
+[35msrc/lib/server/gsc/types.ts[m[36m:[m[32m24[m[36m:[mexport const [1;31mSEARCH_CONSOLE[m_SYNC_RUNS_COLLECTION = 'search_console_sync_runs';
+[35msrc/lib/server/gsc/types.ts[m[36m:[m[32m25[m[36m:[mexport const [1;31mSEARCH_CONSOLE[m_SYNC_WINDOW_DAYS = 28;
+[35msrc/lib/server/gsc/types.ts[m[36m:[m[32m26[m[36m:[mexport const [1;31mSEARCH_CONSOLE[m_PAGE_ROW_LIMIT = 100;
+[35msrc/lib/server/gsc/types.ts[m[36m:[m[32m27[m[36m:[mexport const [1;31mSEARCH_CONSOLE[m_DATA_LAG_DAYS = 1;
+[35msrc/lib/server/rateLimit.ts[m[36m:[m[32m100[m[36m:[m    envPrefix: 'RATE_LIMIT_[1;31mGSC_[mCONNECT',
+[35msrc/lib/server/rateLimit.ts[m[36m:[m[32m106[m[36m:[m    envPrefix: 'RATE_LIMIT_[1;31mGSC_[mCALLBACK',
+[35msrc/lib/server/rateLimit.ts[m[36m:[m[32m112[m[36m:[m    envPrefix: 'RATE_LIMIT_[1;31mGSC_[mSITES',
+[35msrc/lib/server/rateLimit.ts[m[36m:[m[32m118[m[36m:[m    envPrefix: 'RATE_LIMIT_[1;31mGSC_[mSELECT_SITE',
+[35msrc/lib/server/rateLimit.ts[m[36m:[m[32m124[m[36m:[m    envPrefix: 'RATE_LIMIT_[1;31mGSC_[mSUMMARY',
+[35msrc/lib/server/rateLimit.ts[m[36m:[m[32m130[m[36m:[m    envPrefix: 'RATE_LIMIT_[1;31mGSC_[mPAGES',
+[35msrc/lib/server/secretCrypto.ts[m[36m:[m[32m12[m[36m:[mtype SecretEnvName = 'WORDPRESS_CREDENTIALS_SECRET' | '[1;31mGSC_[mTOKENS_SECRET';
+[35msrc/lib/server/secretCrypto.ts[m[36m:[m[32m70[m[36m:[m  return encryptWithSecret(plainText, '[1;31mGSC_[mTOKENS_SECRET');
+[35msrc/lib/server/secretCrypto.ts[m[36m:[m[32m75[m[36m:[m    return decryptWithSecret(payload, '[1;31mGSC_[mTOKENS_SECRET');

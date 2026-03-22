@@ -50,3 +50,5 @@ next-env.d.ts
 
 .chat-debug.log
 .tsc.out
+node_modules/
+*.zip

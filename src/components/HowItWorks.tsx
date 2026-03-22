@@ -6,23 +6,23 @@ import { motion } from 'framer-motion';
 const steps = [
   {
     number: '1',
-    title: 'Wklej jeden tag',
+    title: 'Podłącz WordPress i Search Console',
     description:
-      'Kopiujesz nasz snippet JS i wklejasz go w sekcji <head> swojej strony, dokładnie tak samo jak Google Analytics.',
+      'Podaj dane logowania do WP i połącz konto Google. Zajmuje to 2 minuty.',
     mockup: <CodeMockup />,
   },
   {
     number: '2',
-    title: 'Silnik AI łączy dane z GSC',
+    title: 'Porozmawiaj z agentem',
     description:
-      'Nasz autonomiczny agent bezpiecznie łączy się z Twoim Google Search Console, by zrozumieć pozycje i intencje wyszukiwania klientów. Mapuje całą strukturę H1/H2.',
+      'Agent analizuje Twoje dane z GSC, wskazuje okazje i proponuje zmiany w tytułach, opisach i treści.',
     mockup: <SyncMockup />,
   },
   {
     number: '3',
-    title: 'Wzrost CTR w locie',
+    title: 'Podgląd → Wdróż → Mierz',
     description:
-      'Bress.io podmienia nagłówki w drzewie DOM w momencie wejścia użytkownika. Zmiany indeksują się w Google bez modyfikowania Twojej bazy danych i kodu na serwerze.',
+      'Widzisz dokładnie co się zmieni. Po kliknięciu agent wdraża zmianę w WordPress i mierzy efekt.',
     mockup: <ChartMockup />,
   },
 ];
@@ -30,19 +30,24 @@ const steps = [
 /* ─── Mockupy ─── */
 function CodeMockup() {
   return (
-    <div className="w-full bg-white/5 border border-white/10 rounded-xl p-4 font-mono text-sm leading-relaxed">
+    <div className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-sm leading-relaxed">
       <div className="flex items-center gap-1.5 mb-3">
         <span className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
         <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
         <span className="w-2.5 h-2.5 rounded-full bg-green-500/60" />
       </div>
-      <p className="text-white/30 text-xs mb-1">{'<!-- head section -->'}</p>
-      <p>
-        <span className="text-purple-400">{'<script'}</span>
-        <span className="text-white/50">{' src='}</span>
-        <span className="text-green-400">{'"https://cdn.bress.io/agent.js"'}</span>
-        <span className="text-purple-400">{'></script>'}</span>
-      </p>
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="w-5 h-5 rounded bg-blue-500/20 flex items-center justify-center text-[10px] text-blue-400">W</span>
+          <span className="text-white/70 text-xs">WordPress połączony</span>
+          <span className="ml-auto text-green-400 text-xs">&#10003;</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-5 h-5 rounded bg-yellow-500/20 flex items-center justify-center text-[10px] text-yellow-400">G</span>
+          <span className="text-white/70 text-xs">Search Console połączone</span>
+          <span className="ml-auto text-green-400 text-xs">&#10003;</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -59,7 +64,7 @@ function SyncMockup() {
       <p className="text-xs text-gray-400 tracking-wide">Synchronizacja danych...</p>
       {/* Paski postępu */}
       <div className="w-full space-y-2">
-        {['Search Console', 'Pozycje H1/H2', 'Intencje'].map((label, i) => (
+        {['Search Console', 'Tytuły i opisy', 'Propozycje zmian'].map((label, i) => (
           <div key={label} className="flex items-center gap-2">
             <span className="text-[10px] text-gray-500 w-24 shrink-0">{label}</span>
             <div className="flex-1 h-1 rounded-full bg-white/5 overflow-hidden">
@@ -182,11 +187,10 @@ export default function HowItWorks() {
           className="text-center mb-20"
         >
           <h2 className="text-4xl md:text-5xl font-bold text-white tracking-tight">
-            SEO na autopilocie w 3 krokach.
+            Od podłączenia do wyników w 3 krokach.
           </h2>
           <p className="mt-5 text-gray-400 text-lg max-w-2xl mx-auto">
-            Wystarczy jedna linijka kodu, a nasz agent zajmie się resztą.
-            Bez angażowania programistów.
+            Podłącz WordPress i Search Console, porozmawiaj z agentem i wdrażaj zmiany bez angażowania programistów.
           </p>
         </motion.div>
 

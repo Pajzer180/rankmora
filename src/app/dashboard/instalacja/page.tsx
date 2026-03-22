@@ -1,5 +1,7 @@
 'use client';
 
+// LEGACY — strona instalacji JS snippetu. Ukryta z głównej nawigacji.
+
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -9,6 +11,7 @@ import {
   getSnippetStatus,
 } from '@/lib/snippetActions';
 import type { Project, SiteInstall } from '@/lib/snippetActions';
+import { buildSnippetTag } from '@/lib/appUrl';
 import {
   Code,
   Copy,
@@ -217,11 +220,8 @@ export default function InstalacjaPage() {
     );
   }
 
-  const snippetUrl =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}/api/snippet/agent.js?token=${project?.snippetToken ?? 'TOKEN'}`
-      : '';
-  const snippetTag = `<script async src="${snippetUrl}"></script>`;
+  const token = project?.snippetToken ?? 'TOKEN';
+  const snippetTag = buildSnippetTag(token);
 
   const hasToken = !!project?.snippetToken;
   const isConnected = !!install;
@@ -432,10 +432,17 @@ export default function InstalacjaPage() {
         )}
 
         {/* Info note */}
-        <p className="text-center text-xs leading-relaxed text-zinc-600">
-          Snippet nie wprowadza zmian na stronie. Służy wyłącznie do połączenia
-          strony z Bress.
-        </p>
+        <div className="space-y-2 text-center text-xs leading-relaxed text-zinc-600">
+          <p>
+            Snippet nie wprowadza zmian na stronie. Sluzy wylacznie do polaczenia
+            strony z Bress.
+          </p>
+          <p>
+            Aby snippet dzialal na stronach online, Bress.io musi byc dostepny
+            pod publicznym adresem (np. <code className="rounded bg-white/5 px-1 py-0.5 font-mono text-zinc-500">https://app.bress.io</code>).
+            W trybie deweloperskim snippet uzywa adresu lokalnego.
+          </p>
+        </div>
       </div>
     </div>
   );

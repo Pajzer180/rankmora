@@ -36,6 +36,15 @@ export const gscPagesQuerySchema = z.object({
   search: optionalTrimmedString(2_048).transform((value) => value ?? ''),
 }).strict();
 
+export const gscPageQueriesQuerySchema = z.object({
+  projectId: projectIdSchema,
+  pageUrl: z.string().trim().min(1).max(2048),
+}).strict();
+
+export const gscSyncRequestSchema = z.object({
+  projectId: projectIdSchema,
+}).strict();
+
 export const gscCallbackQuerySchema = z.object({
   code: optionalTrimmedString(4_096),
   error: optionalTrimmedString(200),

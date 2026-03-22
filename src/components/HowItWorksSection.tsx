@@ -5,21 +5,21 @@ import { motion, type Variants } from 'framer-motion';
 const steps = [
   {
     number: '1',
-    title: 'Wklej snippet JS',
+    title: 'Podłącz WordPress i Search Console',
     description:
-      'Jednorazowe wklejenie lekkiego skryptu na stronę — bez zmian w backendzie, bez konfiguracji serwera.',
+      'Podaj dane logowania do WP i połącz konto Google. Zajmuje to 2 minuty.',
   },
   {
     number: '2',
-    title: 'Agent zbiera dane przez 7 dni',
+    title: 'Porozmawiaj z agentem',
     description:
-      'Bress.io łączy się z Google Search Console i analizuje intencje wyszukiwania Twoich użytkowników.',
+      'Agent analizuje Twoje dane z GSC, wskazuje okazje i proponuje zmiany w tytułach, opisach i treści.',
   },
   {
     number: '3',
-    title: 'Automatyczna optymalizacja włączona',
+    title: 'Podgląd, wdrożenie i pomiar',
     description:
-      'Agent podmienia nagłówki i treści w czasie rzeczywistym. CTR rośnie, Ty nie musisz nic robić.',
+      'Widzisz dokładnie co się zmieni. Po kliknięciu agent wdraża zmianę w WordPress i mierzy efekt.',
   },
 ];
 
@@ -47,7 +47,7 @@ export default function HowItWorksSection() {
           className="text-center mb-16"
         >
           <h2 className="text-4xl font-bold text-white tracking-tight">
-            Od instalacji do wzrostu w 3 krokach
+            Od podłączenia do wyników w 3 krokach
           </h2>
         </motion.div>
 

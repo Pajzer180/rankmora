@@ -57,6 +57,7 @@ export async function completeSearchConsoleCallback(
   const existingConnection = await getSearchConsoleConnection(state.projectId);
 
   if (args.error) {
+    console.warn('[GSC Service] Google zwrocil blad OAuth: %s', args.error);
     await persistSearchConsoleFailure(
       state.projectId,
       state.uid,
@@ -79,23 +80,34 @@ export async function completeSearchConsoleCallback(
   }
 
   try {
+    console.log('[GSC Service] Wymiana kodu OAuth na token...');
     const tokenResponse = await exchangeSearchConsoleAuthorizationCode(args.code);
     const accessToken = tokenResponse.access_token?.trim();
 
     if (!accessToken) {
+      console.error('[GSC Service] Google nie zwrocil access_token w odpowiedzi na token exchange.');
       throw new RouteError(502, 'Google nie zwrocil access token dla Search Console.', {
         code: 'SEARCH_CONSOLE_OAUTH_FAILED',
         reason: 'missing-access-token',
       });
     }
 
+    console.log('[GSC Service] Token otrzymany. refresh_token=%s. Szyfrowanie...',
+      tokenResponse.refresh_token ? '(present)' : '(missing)');
+
     const refreshTokenEncrypted = resolveRefreshTokenEncrypted(tokenResponse.refresh_token, existingConnection);
+
+    console.log('[GSC Service] Pobieranie properties z Google Search Console...');
     const availableProperties = await listSearchConsoleProperties(accessToken);
+    console.log('[GSC Service] Znaleziono %d properties.', availableProperties.length);
+
     const selectedPropertyUrl = pickSelectedPropertyUrl({
       availableProperties,
       projectDomain: project.domain,
       previousSelection: existingConnection?.selectedPropertyUrl ?? project.searchConsole?.selectedPropertyUrl ?? null,
     });
+
+    console.log('[GSC Service] Wybrana property: %s', selectedPropertyUrl ?? '(brak)');
 
     await persistConnectedSearchConsoleConnection({
       projectId: state.projectId,
@@ -109,6 +121,8 @@ export async function completeSearchConsoleCallback(
       lastSyncedAt: Date.now(),
     });
 
+    console.log('[GSC Service] Polaczenie zapisane pomyslnie.');
+
     return {
       returnTo: state.returnTo,
       status: 'connected',
@@ -119,6 +133,10 @@ export async function completeSearchConsoleCallback(
       'Nie udalo sie zakonczyc polaczenia z Google Search Console.',
     );
 
+    // Log the REAL error with full details for debugging
+    console.error('[GSC Service] BLAD callback:', routeError.message,
+      error instanceof RouteError ? error.details : (error instanceof Error ? error.stack : error));
+
     await persistSearchConsoleFailure(
       state.projectId,
       state.uid,
@@ -126,10 +144,22 @@ export async function completeSearchConsoleCallback(
       routeError.message,
     );
 
+    // Map specific error codes to UI-friendly reasons
+    let reason = 'callback-failed';
+    if (error instanceof RouteError) {
+      const errorCode = (error.details as { code?: string })?.code;
+      if (errorCode === 'SEARCH_CONSOLE_OAUTH_FAILED') reason = 'token-exchange-failed';
+      else if (errorCode === 'SEARCH_CONSOLE_PROPERTIES_FAILED') reason = 'properties-failed';
+      else if ((error.details as { reason?: string })?.reason === 'missing-refresh-token') reason = 'missing-refresh-token';
+      else if ((error.details as { reason?: string })?.reason === 'missing-access-token') reason = 'missing-access-token';
+    } else if (error instanceof Error && error.message.includes('GSC_TOKENS_SECRET')) {
+      reason = 'encryption-config-missing';
+    }
+
     return {
       returnTo: state.returnTo,
       status: 'error',
-      reason: 'callback-failed',
+      reason,
     };
   }
 }

@@ -48,6 +48,20 @@ function connectionBadgeClass(status: 'connected' | 'failed' | 'disconnected') {
   return 'border-white/10 bg-white/5 text-zinc-400';
 }
 
+function getAuthTokenErrorMessage(error: unknown): string {
+  const code = typeof error === 'object' && error !== null && 'code' in error
+    ? String((error as { code?: unknown }).code ?? '')
+    : '';
+
+  if (code.startsWith('auth/')) {
+    return 'Sesja Bress wygasla. Zaloguj sie ponownie.';
+  }
+
+  return error instanceof Error
+    ? error.message
+    : 'Nie udalo sie pobrac aktywnej sesji Bress.';
+}
+
 export default function UstawieniaPage() {
   const { user, profile, loading } = useAuth();
   const router = useRouter();
@@ -129,7 +143,17 @@ export default function UstawieniaPage() {
       throw new Error('Brak autoryzacji.');
     }
 
-    const idToken = await user.getIdToken();
+    let idToken: string;
+    try {
+      idToken = await user.getIdToken(true);
+    } catch (error) {
+      throw new Error(getAuthTokenErrorMessage(error));
+    }
+
+    if (!idToken) {
+      throw new Error('Nie udalo sie pobrac aktywnej sesji Bress. Zaloguj sie ponownie.');
+    }
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {

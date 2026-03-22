@@ -14,7 +14,8 @@ type SecretEnvName = 'WORDPRESS_CREDENTIALS_SECRET' | 'GSC_TOKENS_SECRET';
 function getSecretKey(secretName: SecretEnvName): Buffer {
   const secret = process.env[secretName]?.trim();
   if (!secret) {
-    throw new Error(`Missing ${secretName}`);
+    console.error('[SecretCrypto] Brakuje zmiennej srodowiskowej: %s. Dodaj ja do .env.local.', secretName);
+    throw new Error(`Brakuje zmiennej srodowiskowej ${secretName}. Dodaj ja do .env.local (np. losowy ciag 32+ znakow).`);
   }
 
   return createHash('sha256').update(secret).digest();

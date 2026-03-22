@@ -23,11 +23,15 @@ export async function POST(req: Request) {
     const { projectId, returnTo } = await readJsonRequestBody(req, gscConnectRequestSchema);
     await assertProjectOwnedByUser(uid, projectId);
 
+    console.log('[GSC Connect] uid=%s, projectId=%s, returnTo=%s', uid, projectId, returnTo);
+
     const { authorizationUrl } = await startSearchConsoleConnection({
       uid,
       projectId,
       returnTo,
     });
+
+    console.log('[GSC Connect] Przekierowanie do Google OAuth.');
 
     return NextResponse.json({
       ok: true,

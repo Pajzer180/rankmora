@@ -36,6 +36,8 @@ interface Props {
   activeSiteUrl: string | null;
   activeSiteDomain: string | null;
   activeSiteSource: 'snippet' | null;
+  projectId: string | null;
+  activePageUrl: string | null;
 }
 
 function extractText(parts: MessagePart[]): string {
@@ -78,6 +80,8 @@ export default function ChatWindow({
   activeSiteUrl,
   activeSiteDomain,
   activeSiteSource,
+  projectId,
+  activePageUrl,
 }: Props) {
   const sessionIdRef  = useRef<string | null>(activeSessionId);
   const prevStatusRef = useRef<string>('ready');
@@ -88,6 +92,8 @@ export default function ChatWindow({
     activeSiteUrl,
     activeSiteDomain,
     activeSiteSource,
+    projectId,
+    activePageUrl,
   });
   useEffect(() => {
     requestBodyRef.current = {
@@ -96,8 +102,10 @@ export default function ChatWindow({
       activeSiteUrl,
       activeSiteDomain,
       activeSiteSource,
+      projectId,
+      activePageUrl,
     };
-  }, [agentMode, agentStyle, activeSiteUrl, activeSiteDomain, activeSiteSource]);
+  }, [agentMode, agentStyle, activeSiteUrl, activeSiteDomain, activeSiteSource, projectId, activePageUrl]);
 
   useEffect(() => {
     sessionIdRef.current = activeSessionId;

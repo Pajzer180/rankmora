@@ -6,10 +6,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
   CheckCircle2,
+  Database,
   Link2,
   Loader2,
+  RefreshCw,
   ShieldCheck,
-  TrendingDown,
   TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -17,54 +18,12 @@ import { getOrCreateDefaultProject } from '@/lib/snippetActions';
 import type { Project } from '@/lib/snippetActions';
 import type {
   SearchConsoleConnectResponse,
+  SearchConsolePagesResponse,
+  SearchConsolePagesRow,
   SearchConsoleSelectPropertyResponse,
   SearchConsoleSitesResponse,
+  SearchConsoleSummaryResponse,
 } from '@/types/searchConsole';
-
-const OPPORTUNITIES = [
-  {
-    url: '/blog/jak-zwiekszyc-ruch',
-    position: 4,
-    ctr: '1.2%',
-    impressions: '8 400',
-    insight: 'Strona jest juz wysoko, ale niski CTR sugeruje slaby tytul i slabsze dopasowanie do intencji.',
-  },
-  {
-    url: '/uslugi/pozycjonowanie',
-    position: 6,
-    ctr: '0.8%',
-    impressions: '5 100',
-    insight: 'Wysoka pozycja, ale meta title nie pokazuje najmocniejszej intencji wyszukiwania.',
-  },
-  {
-    url: '/produkty/kurs-seo',
-    position: 7,
-    ctr: '0.5%',
-    impressions: '3 200',
-    insight: 'Strona rankuje na kilka fraz, ale H1 i snippet nadal nie wykorzystuja tego potencjalu.',
-  },
-];
-
-const THREATS = [
-  {
-    label: 'Kanibalizacja slow kluczowych',
-    icon: AlertTriangle,
-    desc: 'Dwie strony rywalizuja o te sama fraze i dziela autorytet zamiast go wzmacniac.',
-    pages: ['/uslugi/seo', '/blog/pozycjonowanie'],
-  },
-  {
-    label: 'Nagly spadek ruchu',
-    icon: TrendingDown,
-    desc: 'Jedna z glownych stron stracila widocznosc w ostatnich dniach i wymaga szybkiej analizy.',
-    pages: ['/oferta'],
-  },
-];
-
-const PROTECTED = [
-  { url: '/blog/seo-dla-poczatkujacych', ctr: '12.4%', impressions: '18 200' },
-  { url: '/uslugi/copywriting', ctr: '9.8%', impressions: '11 500' },
-  { url: '/case-study/ecommerce', ctr: '8.2%', impressions: '7 800' },
-];
 
 function formatDateTime(ts?: number | null): string {
   if (!ts) {
@@ -75,6 +34,18 @@ function formatDateTime(ts?: number | null): string {
     dateStyle: 'short',
     timeStyle: 'short',
   });
+}
+
+function formatCtr(ctr: number): string {
+  return `${(ctr * 100).toFixed(1)}%`;
+}
+
+function formatNumber(n: number): string {
+  return n.toLocaleString('pl-PL');
+}
+
+function isOlderThan48h(ts: number): boolean {
+  return Date.now() - ts > 48 * 60 * 60 * 1000;
 }
 
 function getSearchConsoleFeedback(
@@ -104,6 +75,16 @@ function getSearchConsoleFeedback(
   }
 }
 
+function computeCtrOpportunities(rows: SearchConsolePagesRow[]): SearchConsolePagesRow[] {
+  return rows
+    .filter((row) => row.position <= 15 && row.impressions >= 500 && row.ctr <= 0.02)
+    .sort((a, b) => b.impressions - a.impressions);
+}
+
+function computeTopByClicks(rows: SearchConsolePagesRow[], limit: number): SearchConsolePagesRow[] {
+  return [...rows].sort((a, b) => b.clicks - a.clicks).slice(0, limit);
+}
+
 function AnalitykaPageFallback() {
   return (
     <div className="flex flex-1 items-center justify-center bg-black">
@@ -126,6 +107,12 @@ function AnalitykaPageContent() {
   const [sitesLoading, setSitesLoading] = useState(false);
   const [selectLoading, setSelectLoading] = useState(false);
   const [propertyDraft, setPropertyDraft] = useState('');
+
+  const [summary, setSummary] = useState<SearchConsoleSummaryResponse | null>(null);
+  const [pages, setPages] = useState<SearchConsolePagesResponse | null>(null);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
 
   const projectId = project?.id ?? null;
   const projectStatus = project?.searchConsole?.status ?? null;
@@ -177,6 +164,28 @@ function AnalitykaPageContent() {
       setPageLoading(false);
     }
   }, [profile, user]);
+
+  const loadGscData = useCallback(async (pid: string) => {
+    setDataLoading(true);
+
+    try {
+      const [summaryRes, pagesRes] = await Promise.all([
+        requestAuthorizedJson<SearchConsoleSummaryResponse>(
+          `/api/gsc/summary?projectId=${encodeURIComponent(pid)}`,
+        ),
+        requestAuthorizedJson<SearchConsolePagesResponse>(
+          `/api/gsc/pages?projectId=${encodeURIComponent(pid)}&limit=100&sortBy=impressions&sortDir=desc`,
+        ),
+      ]);
+
+      setSummary(summaryRes);
+      setPages(pagesRes);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDataLoading(false);
+    }
+  }, [requestAuthorizedJson]);
 
   const loadSites = useCallback(async (nextProjectId: string) => {
     setSitesLoading(true);
@@ -255,6 +264,20 @@ function AnalitykaPageContent() {
     }
   }, [gscStatus, loadSites, projectId, projectStatus, user]);
 
+  // Fetch GSC data when property is selected and connected
+  useEffect(() => {
+    if (!projectId || projectStatus !== 'connected') {
+      return;
+    }
+
+    const selectedProperty = project?.searchConsole?.selectedPropertyUrl;
+    if (!selectedProperty) {
+      return;
+    }
+
+    void loadGscData(projectId);
+  }, [projectId, projectStatus, project?.searchConsole?.selectedPropertyUrl, loadGscData]);
+
   const handleConnect = async () => {
     if (!projectId) {
       return;
@@ -310,6 +333,74 @@ function AnalitykaPageContent() {
     }
   };
 
+  const handleSync = async () => {
+    if (!projectId || syncLoading) {
+      return;
+    }
+
+    setSyncLoading(true);
+    setSyncResult(null);
+    setPageError(null);
+
+    try {
+      const response = await requestAuthorizedJson<{ ok: boolean }>(
+        '/api/gsc/sync',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId }),
+        },
+      );
+
+      if (response.ok) {
+        setSyncResult('Synchronizacja zakonczona pomyslnie.');
+        // Reload GSC data to show fresh results
+        await loadGscData(projectId);
+      }
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
+  const ctrOpportunities = useMemo(
+    () => (pages ? computeCtrOpportunities(pages.rows) : []),
+    [pages],
+  );
+
+  const topByClicks = useMemo(
+    () => (pages ? computeTopByClicks(pages.rows, 5) : []),
+    [pages],
+  );
+
+  const alerts = useMemo(() => {
+    const items: { message: string; severity: 'warning' | 'error' }[] = [];
+
+    if (projectStatus !== 'connected') {
+      items.push({
+        message: 'Podlacz Google Search Console, aby zobaczyc dane.',
+        severity: 'warning',
+      });
+    }
+
+    if (summary && !summary.freshness.hasData) {
+      items.push({
+        message: 'Brak danych GSC. Uruchom synchronizacje.',
+        severity: 'error',
+      });
+    }
+
+    if (summary?.freshness.lastSyncedAt && isOlderThan48h(summary.freshness.lastSyncedAt)) {
+      items.push({
+        message: `Dane moga byc nieaktualne. Ostatnia synchronizacja: ${formatDateTime(summary.freshness.lastSyncedAt)}`,
+        severity: 'warning',
+      });
+    }
+
+    return items;
+  }, [projectStatus, summary]);
+
   if (loading || pageLoading) {
     return (
       <div className="flex flex-1 items-center justify-center bg-black">
@@ -335,6 +426,7 @@ function AnalitykaPageContent() {
 
   return (
     <div className="flex-1 overflow-y-auto bg-black px-6 py-6">
+      {/* GSC Connection Panel */}
       <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 px-6 py-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2">
@@ -440,152 +532,193 @@ function AnalitykaPageContent() {
         )}
       </div>
 
-      <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 px-6 py-5">
-        <p className="mb-1 text-[11px] uppercase tracking-widest text-gray-600">
-          Ostatnia analiza: dzis o 08:23
-        </p>
-        <p className="text-lg font-semibold leading-snug text-white">
-          Agent przeanalizowal <span className="text-purple-400">12 400</span> zapytan z Twojego GSC.
-          Znalazl <span className="text-sky-400">3 okazje</span> i <span className="text-red-400">2 problemy</span>.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <div className="rounded-2xl border border-sky-500/15 bg-sky-500/5 p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/15">
-              <TrendingUp className="h-4 w-4 text-sky-400" />
+      {/* Alerts */}
+      {alerts.length > 0 && (
+        <div className="mb-6 space-y-3">
+          {alerts.map((alert) => (
+            <div
+              key={alert.message}
+              className={`flex items-center gap-3 rounded-2xl border px-5 py-4 text-sm ${
+                alert.severity === 'error'
+                  ? 'border-red-500/20 bg-red-500/5 text-red-300'
+                  : 'border-yellow-500/20 bg-yellow-500/5 text-yellow-300'
+              }`}
+            >
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              {alert.message}
             </div>
-            <h3 className="text-sm font-semibold text-white">Okazje</h3>
-            <span className="ml-auto rounded-full bg-sky-500/10 px-2 py-0.5 text-xs font-medium text-sky-400">
-              3
-            </span>
-          </div>
-
-          <p className="mb-4 text-xs text-gray-500">
-            Strony o wysokiej pozycji i niskim CTR. Szybki wzrost bez nowych tresci.
-          </p>
-
-          <div className="space-y-3">
-            {OPPORTUNITIES.map((opp) => (
-              <div key={opp.url} className="rounded-xl border border-white/8 bg-black/50 p-4">
-                <p className="mb-3 truncate font-mono text-xs text-gray-400">{opp.url}</p>
-
-                <div className="mb-3 flex gap-4">
-                  <div>
-                    <p className="text-[10px] text-gray-600">Pozycja</p>
-                    <p className="text-sm font-bold text-white">#{opp.position}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-gray-600">CTR</p>
-                    <p className="text-sm font-bold text-orange-400">{opp.ctr}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-gray-600">Wyswietlenia</p>
-                    <p className="text-sm font-bold text-white">{opp.impressions}</p>
-                  </div>
-                </div>
-
-                <p className="mb-3 text-xs leading-relaxed text-gray-500">{opp.insight}</p>
-
-                <Link href="/dashboard/chat">
-                  <button className="w-full rounded-lg border border-sky-500/25 bg-sky-500/10 py-2 text-xs font-medium text-sky-400 transition-colors hover:bg-sky-500/20">
-                    Rozwiaz z Agentem {'->'}
-                  </button>
-                </Link>
-              </div>
-            ))}
-          </div>
+          ))}
         </div>
+      )}
 
-        <div className="rounded-2xl border border-red-500/15 bg-red-500/5 p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-500/15">
-              <AlertTriangle className="h-4 w-4 text-red-400" />
-            </div>
-            <h3 className="text-sm font-semibold text-white">Zagrozenia</h3>
-            <span className="ml-auto rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-400">
-              2
-            </span>
-          </div>
-
-          <p className="mb-4 text-xs text-gray-500">
-            Problemy, ktore aktywnie oslabiaja pozycje i ruch organiczny.
-          </p>
-
-          <div className="space-y-3">
-            {THREATS.map((threat) => (
-              <div key={threat.label} className="rounded-xl border border-white/8 bg-black/50 p-4">
-                <div className="mb-2 flex items-center gap-2">
-                  <threat.icon className="h-4 w-4 flex-shrink-0 text-red-400" />
-                  <p className="text-xs font-semibold text-red-300">{threat.label}</p>
-                </div>
-
-                <p className="mb-3 text-xs leading-relaxed text-gray-500">{threat.desc}</p>
-
-                <div className="mb-3 flex flex-wrap gap-1.5">
-                  {threat.pages.map((page) => (
-                    <span
-                      key={page}
-                      className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[10px] text-gray-400"
-                    >
-                      {page}
-                    </span>
-                  ))}
-                </div>
-
-                <Link href="/dashboard/chat">
-                  <button className="w-full rounded-lg border border-red-500/25 bg-red-500/10 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20">
-                    Rozwiaz z Agentem {'->'}
-                  </button>
-                </Link>
-              </div>
-            ))}
-          </div>
+      {/* Loading state for GSC data */}
+      {dataLoading && (
+        <div className="mb-6 flex items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-6 py-10">
+          <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
+          <p className="text-sm text-zinc-400">Ladowanie danych z Search Console...</p>
         </div>
+      )}
 
-        <div className="rounded-2xl border border-violet-500/15 bg-violet-500/5 p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/15">
-              <ShieldCheck className="h-4 w-4 text-violet-400" />
-            </div>
-            <h3 className="text-sm font-semibold text-white">Liderzy chronione</h3>
-            <span className="ml-auto rounded-full bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-400">
-              {PROTECTED.length}
-            </span>
-          </div>
+      {/* Data sections - only show when we have data */}
+      {summary && !dataLoading && (
+        <>
+          {/* Stan danych */}
+          <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 px-6 py-5">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Database className="h-5 w-5 text-purple-400" />
+                <h2 className="text-sm font-semibold text-white">Stan danych</h2>
+              </div>
 
-          <p className="mb-4 text-xs text-gray-500">
-            Najlepsze strony, ktorych agent nie powinien ruszac bez mocnego powodu.
-          </p>
-
-          <div className="space-y-2">
-            {PROTECTED.map((item) => (
-              <div
-                key={item.url}
-                className="flex items-center gap-3 rounded-xl border border-white/8 bg-black/50 p-4"
+              <button
+                onClick={handleSync}
+                disabled={syncLoading || !projectId}
+                className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-white/10 disabled:opacity-50"
               >
-                <ShieldCheck className="h-5 w-5 flex-shrink-0 text-green-400" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-mono text-xs text-gray-300">{item.url}</p>
-                  <p className="mt-0.5 text-[10px] text-gray-500">
-                    CTR {item.ctr} · {item.impressions} wyswietlen
-                  </p>
-                </div>
+                <RefreshCw className={`h-3.5 w-3.5 ${syncLoading ? 'animate-spin' : ''}`} />
+                {syncLoading ? 'Synchronizacja...' : 'Synchronizuj teraz'}
+              </button>
+            </div>
+
+            {syncResult && (
+              <div className="mb-4 flex items-center gap-3 rounded-xl border border-green-500/20 bg-green-500/5 px-4 py-3 text-sm text-green-300">
+                <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                {syncResult}
               </div>
-            ))}
+            )}
+
+            {!summary.freshness.hasData || !summary.freshness.lastSyncedAt ? (
+              <div className="flex items-center gap-3 rounded-xl border border-yellow-500/20 bg-yellow-500/5 px-4 py-3 text-sm text-yellow-300">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                Brak zsynchronizowanych danych. Kliknij &quot;Synchronizuj teraz&quot; powyzej.
+              </div>
+            ) : (
+              <>
+                <div className="mb-4 grid gap-2 text-xs text-zinc-500 sm:grid-cols-2">
+                  <p>Ostatnia synchronizacja: {formatDateTime(summary.freshness.lastSyncedAt)}</p>
+                  <p>Okno danych: {summary.windowDays} dni</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                  <div className="rounded-xl border border-white/8 bg-black/50 p-4">
+                    <p className="text-[10px] uppercase tracking-wide text-zinc-500">Klikniecia</p>
+                    <p className="mt-1 text-xl font-bold text-white">{formatNumber(summary.totals.clicks)}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/8 bg-black/50 p-4">
+                    <p className="text-[10px] uppercase tracking-wide text-zinc-500">Wyswietlenia</p>
+                    <p className="mt-1 text-xl font-bold text-white">{formatNumber(summary.totals.impressions)}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/8 bg-black/50 p-4">
+                    <p className="text-[10px] uppercase tracking-wide text-zinc-500">Sredni CTR</p>
+                    <p className="mt-1 text-xl font-bold text-white">{formatCtr(summary.totals.avgCtr)}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/8 bg-black/50 p-4">
+                    <p className="text-[10px] uppercase tracking-wide text-zinc-500">Srednia pozycja</p>
+                    <p className="mt-1 text-xl font-bold text-white">{summary.totals.avgPosition.toFixed(1)}</p>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
-          <div className="mt-4 rounded-xl border border-green-500/15 bg-green-500/5 p-3 text-center">
-            <p className="text-xs font-medium text-green-400">
-              Protected before optimization
-            </p>
-            <p className="mt-0.5 text-[10px] text-gray-600">
-              Agent omija te strony podczas rekomendacji zmian.
-            </p>
-          </div>
-        </div>
-      </div>
+          {/* Okazje CTR & Strony do ochrony */}
+          {pages && (
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              {/* Okazje CTR */}
+              <div className="rounded-2xl border border-sky-500/15 bg-sky-500/5 p-5">
+                <div className="mb-4 flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/15">
+                    <TrendingUp className="h-4 w-4 text-sky-400" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-white">Okazje CTR</h3>
+                  <span className="ml-auto rounded-full bg-sky-500/10 px-2 py-0.5 text-xs font-medium text-sky-400">
+                    {ctrOpportunities.length}
+                  </span>
+                </div>
+
+                <p className="mb-4 text-xs text-zinc-500">
+                  Strony z wysoka pozycja (top 15), duzymi wyswietleniami i niskim CTR. Szybki wzrost bez nowych tresci.
+                </p>
+
+                {ctrOpportunities.length === 0 ? (
+                  <div className="rounded-xl border border-white/8 bg-black/50 p-4 text-center">
+                    <p className="text-xs text-zinc-500">Brak okazji spelniajacych kryteria.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {ctrOpportunities.map((row) => (
+                      <div key={row.pageUrl} className="rounded-xl border border-white/8 bg-black/50 p-4">
+                        <p className="mb-3 truncate font-mono text-xs text-zinc-400">{row.pageUrl}</p>
+
+                        <div className="mb-3 flex gap-4">
+                          <div>
+                            <p className="text-[10px] text-zinc-600">Pozycja</p>
+                            <p className="text-sm font-bold text-white">#{row.position.toFixed(1)}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-zinc-600">CTR</p>
+                            <p className="text-sm font-bold text-orange-400">{formatCtr(row.ctr)}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-zinc-600">Wyswietlenia</p>
+                            <p className="text-sm font-bold text-white">{formatNumber(row.impressions)}</p>
+                          </div>
+                        </div>
+
+                        <Link href={`/dashboard/chat?pageUrl=${encodeURIComponent(row.pageUrl)}`}>
+                          <button className="w-full rounded-lg border border-sky-500/25 bg-sky-500/10 py-2 text-xs font-medium text-sky-400 transition-colors hover:bg-sky-500/20">
+                            Otworz w chacie
+                          </button>
+                        </Link>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Strony do ochrony */}
+              <div className="rounded-2xl border border-violet-500/15 bg-violet-500/5 p-5">
+                <div className="mb-4 flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/15">
+                    <ShieldCheck className="h-4 w-4 text-violet-400" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-white">Strony do ochrony</h3>
+                  <span className="ml-auto rounded-full bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-400">
+                    {topByClicks.length}
+                  </span>
+                </div>
+
+                <p className="mb-4 text-xs text-zinc-500">
+                  Najlepsze strony wedlug klikniec. Wymagaja ostroznosci przy optymalizacji.
+                </p>
+
+                {topByClicks.length === 0 ? (
+                  <div className="rounded-xl border border-white/8 bg-black/50 p-4 text-center">
+                    <p className="text-xs text-zinc-500">Brak danych o stronach.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {topByClicks.map((row) => (
+                      <div
+                        key={row.pageUrl}
+                        className="flex items-center gap-3 rounded-xl border border-white/8 bg-black/50 p-4"
+                      >
+                        <ShieldCheck className="h-5 w-5 flex-shrink-0 text-green-400" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-mono text-xs text-zinc-300">{row.pageUrl}</p>
+                          <p className="mt-0.5 text-[10px] text-zinc-500">
+                            CTR {formatCtr(row.ctr)} · {formatNumber(row.clicks)} klikniec · {formatNumber(row.impressions)} wyswietlen
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

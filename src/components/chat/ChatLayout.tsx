@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { getClientDb } from '@/lib/firebase';
 import { getMessages } from '@/lib/chatFirestore';
@@ -55,6 +55,7 @@ function resolveActiveSiteFromInstall(install: SiteInstall): {
 export default function ChatLayout() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [sessions,        setSessions]        = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -65,38 +66,58 @@ export default function ChatLayout() {
   const [sidebarOpen,     setSidebarOpen]     = useState(() => (
     typeof window === 'undefined' || window.innerWidth >= 768
   ));
-  const [activeSiteUrl,   setActiveSiteUrl]   = useState<string | null>(null);
-  const [activeSiteDomain, setActiveSiteDomain] = useState<string | null>(null);
+  // Parse ?pageUrl= from search params at init (avoids setState in effect)
+  const initialPageUrl = useMemo(() => {
+    const pageUrlParam = searchParams.get('pageUrl');
+    if (!pageUrlParam) return null;
+    try {
+      const parsed = new URL(pageUrlParam);
+      return { url: parsed.toString(), domain: parsed.hostname };
+    } catch {
+      return null;
+    }
+  }, [searchParams]);
+
+  const [activeSiteUrl,   setActiveSiteUrl]   = useState<string | null>(initialPageUrl?.url ?? null);
+  const [activeSiteDomain, setActiveSiteDomain] = useState<string | null>(initialPageUrl?.domain ?? null);
   const [activeSiteSource, setActiveSiteSource] = useState<'snippet' | null>(null);
+  const [projectId,       setProjectId]       = useState<string | null>(null);
+  const [activePageUrl] = useState<string | null>(initialPageUrl?.url ?? null);
 
   useEffect(() => {
     if (!loading && !user) router.push('/login');
   }, [user, loading, router]);
 
-  // Fetch active site from snippet install
+  // Fetch active site from snippet install and store projectId
   useEffect(() => {
     if (!user) return;
     (async () => {
       try {
         const project = await getOrCreateDefaultProject(user.uid, { domain: '' });
+        setProjectId(project.id);
         const install = await getSnippetStatus(project.id);
         if (install) {
           const active = resolveActiveSiteFromInstall(install);
-          setActiveSiteUrl(active.url);
-          setActiveSiteDomain(active.domain);
-          setActiveSiteSource(active.source);
-        } else {
+          // Only set from snippet if not already overridden by pageUrl param
+          if (!searchParams.get('pageUrl')) {
+            setActiveSiteUrl(active.url);
+            setActiveSiteDomain(active.domain);
+            setActiveSiteSource(active.source);
+          }
+        } else if (!searchParams.get('pageUrl')) {
           setActiveSiteUrl(null);
           setActiveSiteDomain(null);
           setActiveSiteSource(null);
         }
       } catch {
-        setActiveSiteUrl(null);
-        setActiveSiteDomain(null);
-        setActiveSiteSource(null);
+        if (!searchParams.get('pageUrl')) {
+          setActiveSiteUrl(null);
+          setActiveSiteDomain(null);
+          setActiveSiteSource(null);
+        }
       }
     })();
-  }, [user]);
+  }, [user, searchParams]);
 
   // Real-time sessions subscription
   useEffect(() => {
@@ -179,6 +200,8 @@ export default function ChatLayout() {
           activeSiteUrl={activeSiteUrl}
           activeSiteDomain={activeSiteDomain}
           activeSiteSource={activeSiteSource}
+          projectId={projectId}
+          activePageUrl={activePageUrl}
         />
       </div>
     </div>

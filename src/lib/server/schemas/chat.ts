@@ -28,6 +28,8 @@ export const chatRequestSchema = z.object({
   activeSiteUrl: nullableTrimmedString(2048),
   activeSiteDomain: nullableTrimmedString(255),
   activeSiteSource: z.enum(['snippet']).nullable().optional().transform((value) => value ?? null),
+  projectId: nullableTrimmedString(200),
+  activePageUrl: nullableTrimmedString(2048),
 }).passthrough();
 
 export type ChatRequestInput = z.infer<typeof chatRequestSchema>;

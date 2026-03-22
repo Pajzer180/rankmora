@@ -1,5 +1,7 @@
 'use client';
 
+// LEGACY — tryb developerski historii zmian. Zastąpiony przez /dashboard/zmiany.
+
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';

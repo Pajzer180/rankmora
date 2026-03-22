@@ -1,3 +1,5 @@
+// LEGACY — placeholder strony. Ukryta z nawigacji.
+
 export default function StronaPage() {
   return (
     <div className="flex flex-1 items-center justify-center">

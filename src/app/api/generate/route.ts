@@ -29,6 +29,8 @@ import {
 } from '@/lib/server/validation';
 import type { ActionType } from '@/types/history';
 
+// LEGACY — endpoint generowania akcji SEO przez snippet. Nowy core oparty jest o chat + WordPress ChangeOps.
+
 function inferActionType(action: GenerateSeoAction): ActionType {
   const text = `${action.action} ${action.selector}`.toLowerCase();
   if (text.includes('meta') && text.includes('description')) return 'update_meta_description';

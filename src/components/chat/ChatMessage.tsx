@@ -5,6 +5,8 @@ import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import CodeBlock from './CodeBlock';
+import ChangeJobCard from './ChangeJobCard';
+import type { ChangeJobCardProps } from './ChangeJobCard';
 import SeoCard from './SeoCard';
 import type { SeoCardData } from '@/app/api/chat/route';
 
@@ -32,15 +34,29 @@ function extractText(parts: MessagePart[]): string {
 const SEO_MARKER = /__SEO_DATA__:([\s\S]+?)__END_SEO__\n?/;
 const SEO_STRIP = /__SEO_DATA__:[\s\S]+?__END_SEO__\n?/g;
 
-function parseMessageContent(text: string): { seoData: SeoCardData | null; cleanBody: string } {
-  const match = text.match(SEO_MARKER);
-  const cleanBody = text.replace(SEO_STRIP, '').trim();
-  if (!match) return { seoData: null, cleanBody };
-  try {
-    return { seoData: JSON.parse(match[1]) as SeoCardData, cleanBody };
-  } catch {
-    return { seoData: null, cleanBody };
+const CHANGE_JOB_MARKER = /__CHANGE_JOB__:([\s\S]+?)__END_CHANGE_JOB__\n?/g;
+const CHANGE_JOB_STRIP = /__CHANGE_JOB__:[\s\S]+?__END_CHANGE_JOB__\n?/g;
+
+function parseMessageContent(text: string): {
+  seoData: SeoCardData | null;
+  changeJobs: ChangeJobCardProps[];
+  cleanBody: string;
+} {
+  const seoMatch = text.match(SEO_MARKER);
+  const seoData = seoMatch ? (() => { try { return JSON.parse(seoMatch[1]) as SeoCardData; } catch { return null; } })() : null;
+
+  const changeJobs: ChangeJobCardProps[] = [];
+  let jobMatch: RegExpExecArray | null;
+  const jobRegex = new RegExp(CHANGE_JOB_MARKER.source, 'g');
+  while ((jobMatch = jobRegex.exec(text)) !== null) {
+    try {
+      changeJobs.push(JSON.parse(jobMatch[1]) as ChangeJobCardProps);
+    } catch { /* skip malformed */ }
   }
+
+  const cleanBody = text.replace(SEO_STRIP, '').replace(CHANGE_JOB_STRIP, '').trim();
+
+  return { seoData, changeJobs, cleanBody };
 }
 
 const markdownComponents: Components = {
@@ -94,10 +110,13 @@ export default function ChatMessage({ message, userInitial }: Props) {
           <span className="whitespace-pre-wrap">{text}</span>
         </div>
       ) : (() => {
-        const { seoData, cleanBody } = parseMessageContent(text);
+        const { seoData, changeJobs, cleanBody } = parseMessageContent(text);
         return (
           <div className="max-w-[75%] min-w-0">
             {seoData && <SeoCard {...seoData} />}
+            {changeJobs.map((job) => (
+              <ChangeJobCard key={job.jobId} {...job} />
+            ))}
             {cleanBody && (
               <div className="rounded-2xl rounded-tl-sm border border-white/10 bg-white/5 px-4 py-2.5 text-sm leading-relaxed text-gray-200">
                 <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>

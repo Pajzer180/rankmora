@@ -4,6 +4,8 @@ import {
   createSnippetAgentResponse,
 } from '@/lib/server/snippetInstall';
 
+// LEGACY — JS snippet serwowany klientom. Nowy core oparty jest o WordPress API + GSC.
+
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get('token')?.trim();
   const clientId = req.nextUrl.searchParams.get('clientId')?.trim();
