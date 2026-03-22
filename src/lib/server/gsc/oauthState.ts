@@ -1,7 +1,11 @@
 import 'server-only';
 
 import { randomBytes } from 'crypto';
-import { getFirestoreAdmin } from '@/lib/server/firestoreAdmin';
+import {
+  getDocument,
+  setDocument,
+  deleteDocument,
+} from '@/lib/server/firestoreRest';
 import { RouteError } from '@/lib/server/routeError';
 import {
   DEFAULT_SEARCH_CONSOLE_RETURN_TO,
@@ -10,10 +14,6 @@ import {
   type SearchConsoleOAuthStateRecord,
   type SearchConsoleStoredOAuthState,
 } from '@/lib/server/gsc/types';
-
-function stateDoc(token: string) {
-  return getFirestoreAdmin().collection(SEARCH_CONSOLE_OAUTH_STATES_COLLECTION).doc(token);
-}
 
 export function normalizeSearchConsoleReturnTo(value?: string | null): string {
   const trimmed = value?.trim();
@@ -43,7 +43,11 @@ export async function createSearchConsoleOAuthState(args: {
     expiresAt: new Date(now + SEARCH_CONSOLE_STATE_MAX_AGE_MS).toISOString(),
   };
 
-  await stateDoc(token).set(record);
+  await setDocument(
+    SEARCH_CONSOLE_OAUTH_STATES_COLLECTION,
+    token,
+    record as unknown as Record<string, unknown>,
+  );
   console.log('[GSC OAuthState] Utworzono state token dla projectId=%s, returnTo=%s, wygasa=%s',
     args.projectId, record.returnTo, record.expiresAt);
   return token;
@@ -58,14 +62,13 @@ export async function consumeSearchConsoleOAuthState(token: string): Promise<Sea
     });
   }
 
-  const result = await getFirestoreAdmin().runTransaction(async (transaction) => {
-    const reference = stateDoc(normalizedToken);
-    const snapshot = await transaction.get(reference);
-    transaction.delete(reference);
-    return snapshot;
-  });
+  // Read-then-delete (no transaction needed — single consumer pattern)
+  const snapshot = await getDocument(SEARCH_CONSOLE_OAUTH_STATES_COLLECTION, normalizedToken);
 
-  if (!result.exists) {
+  // Delete immediately regardless of validity
+  await deleteDocument(SEARCH_CONSOLE_OAUTH_STATES_COLLECTION, normalizedToken);
+
+  if (!snapshot.exists) {
     console.warn('[GSC OAuthState] State token nie znaleziony w Firestore (moze wygasl lub zuzyt podwojnie).');
     throw new RouteError(400, 'Invalid Search Console OAuth state.', {
       code: 'SEARCH_CONSOLE_STATE_INVALID',
@@ -73,7 +76,7 @@ export async function consumeSearchConsoleOAuthState(token: string): Promise<Sea
     });
   }
 
-  const data = result.data() as Partial<SearchConsoleOAuthStateRecord> | undefined;
+  const data = snapshot.data() as Partial<SearchConsoleOAuthStateRecord> | undefined;
   if (
     !data
     || typeof data.uid !== 'string'

@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createHash } from 'crypto';
-import { getFirestoreAdmin } from '@/lib/server/firestoreAdmin';
+import { getDocument, setDocument } from '@/lib/server/firestoreRest';
 import { getSearchConsoleSyncContext } from '@/lib/server/gsc/service';
 import { querySearchConsoleSearchAnalytics } from '@/lib/server/gsc/client';
 import {
@@ -64,11 +64,11 @@ export async function getPageQueriesFromCache(
   pageUrl: string,
 ): Promise<PageQueriesCache | null> {
   const docId = buildDocId(projectId, pageUrl);
-  const doc = await getFirestoreAdmin().collection(PAGE_QUERIES_COLLECTION).doc(docId).get();
+  const doc = await getDocument(PAGE_QUERIES_COLLECTION, docId);
 
   if (!doc.exists) return null;
 
-  const data = doc.data() as PageQueriesCache;
+  const data = doc.data() as unknown as PageQueriesCache;
   if (Date.now() - data.syncedAt > CACHE_TTL_MS) return null;
 
   return data;
@@ -132,7 +132,7 @@ export async function fetchAndCachePageQueries(
   };
 
   const docId = buildDocId(projectId, pageUrl);
-  await getFirestoreAdmin().collection(PAGE_QUERIES_COLLECTION).doc(docId).set(cacheRecord);
+  await setDocument(PAGE_QUERIES_COLLECTION, docId, cacheRecord as unknown as Record<string, unknown>);
 
   return cacheRecord;
 }

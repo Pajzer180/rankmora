@@ -1,9 +1,7 @@
 import 'server-only';
 
-import { doc, getDoc } from 'firebase/firestore';
-import type { FirebaseAuthError } from 'firebase-admin/auth';
-import { getClientDb } from '@/lib/firebase';
-import { getFirebaseAdminAuth } from '@/lib/server/firebaseAdmin';
+import { getDocument } from '@/lib/server/firestoreRest';
+import { verifyFirebaseIdToken, FirebaseAuthError } from '@/lib/server/firebaseJwtVerifier';
 import { RouteError } from '@/lib/server/routeError';
 
 export { RouteError, toRouteErrorResponse, jsonErrorResponse } from '@/lib/server/routeError';
@@ -20,8 +18,8 @@ export async function resolveUidFromBearerToken(req: Request): Promise<string | 
   if (!idToken) return null;
 
   try {
-    const decodedToken = await getFirebaseAdminAuth().verifyIdToken(idToken);
-    return decodedToken.uid ?? null;
+    const decoded = await verifyFirebaseIdToken(idToken);
+    return decoded.uid ?? null;
   } catch (error) {
     const firebaseCode = getFirebaseAuthErrorCode(error);
     if (firebaseCode && isInvalidUserTokenErrorCode(firebaseCode)) {
@@ -46,15 +44,14 @@ export async function requireAuthenticatedUid(req: Request): Promise<string> {
 }
 
 export async function assertProjectOwnedByUser(uid: string, projectId: string): Promise<void> {
-  const db = getClientDb();
-  const projectSnap = await getDoc(doc(db, 'projects', projectId));
+  const projectSnap = await getDocument('projects', projectId);
 
-  if (!projectSnap.exists()) {
+  if (!projectSnap.exists) {
     throw new RouteError(403, 'Forbidden');
   }
 
-  const project = projectSnap.data() as { uid?: string };
-  if (project.uid !== uid) {
+  const project = projectSnap.data() as { uid?: string } | undefined;
+  if (!project || project.uid !== uid) {
     throw new RouteError(403, 'Forbidden');
   }
 }
@@ -64,11 +61,11 @@ function getFirebaseAuthErrorCode(error: unknown): string | null {
     return null;
   }
 
-  if (error.name !== 'FirebaseAuthError') {
+  if (!(error instanceof FirebaseAuthError)) {
     return null;
   }
 
-  const code = (error as FirebaseAuthError).code;
+  const code = error.code;
   return typeof code === 'string' && code.startsWith('auth/')
     ? code
     : null;

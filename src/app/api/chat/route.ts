@@ -17,7 +17,7 @@ import { getSearchConsoleSummaryFromCache, getSearchConsolePagesFromCache } from
 import { getPageQueriesFromCache } from '@/lib/server/gsc/pageQueries';
 import { createWordPressPreviewJob, applyWordPressChangeJob, rollbackWordPressChangeJob } from '@/lib/wordpress/service';
 import { getChangeMeasurementsByJob } from '@/lib/server/changeMeasurements';
-import { getFirebaseAdminDb } from '@/lib/server/firebaseAdmin';
+import { getDocument } from '@/lib/server/firestoreRest';
 
 const CHAT_REMOTE_FETCH_TIMEOUT_MS = 8_000;
 const CHAT_REMOTE_FETCH_MAX_RESPONSE_BYTES = 2_000_000;
@@ -299,8 +299,7 @@ export async function POST(req: Request) {
       console.log(`[CHAT_CONTEXT] projectId=${projectId}`);
     }
     try {
-      const db = getFirebaseAdminDb();
-      const projectSnap = await db.collection('projects').doc(projectId).get();
+      const projectSnap = await getDocument('projects', projectId);
       if (projectSnap.exists) {
         const projectData = projectSnap.data() as Record<string, unknown>;
         const projectName = typeof projectData.name === 'string' ? projectData.name : null;

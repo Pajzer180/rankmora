@@ -1,8 +1,12 @@
 import 'server-only';
 
 import { createHash } from 'crypto';
-import type { WriteBatch } from 'firebase-admin/firestore';
-import { getFirestoreAdmin } from '@/lib/server/firestoreAdmin';
+import {
+  queryCollection,
+  setDocument,
+  createDocument,
+  batchWrite,
+} from '@/lib/server/firestoreRest';
 import { RouteError } from '@/lib/server/routeError';
 import {
   SEARCH_CONSOLE_DAILY_COLLECTION,
@@ -21,27 +25,13 @@ import type {
   SearchConsoleSyncRunRecord,
 } from '@/types/searchConsole';
 
-const MAX_BATCH_OPERATIONS = 400;
-
-function dailyCollection() {
-  return getFirestoreAdmin().collection(SEARCH_CONSOLE_DAILY_COLLECTION);
-}
-
-function pagesCollection() {
-  return getFirestoreAdmin().collection(SEARCH_CONSOLE_PAGES_28D_COLLECTION);
-}
-
-function syncRunsCollection() {
-  return getFirestoreAdmin().collection(SEARCH_CONSOLE_SYNC_RUNS_COLLECTION);
-}
-
 export async function listConnectedSearchConsoleConnections(): Promise<SearchConsoleConnectionRecord[]> {
-  const snapshot = await getFirestoreAdmin()
-    .collection('search_console_connections')
-    .where('status', '==', 'connected')
-    .get();
+  const result = await queryCollection(
+    'search_console_connections',
+    [{ field: 'status', op: 'EQUAL', value: 'connected' }],
+  );
 
-  return snapshot.docs.map((doc) => ({
+  return result.docs.map((doc) => ({
     id: doc.id,
     ...(doc.data() as Omit<SearchConsoleConnectionRecord, 'id'>),
   }));
@@ -78,27 +68,30 @@ export async function getSearchConsoleCacheContext(projectId: string): Promise<S
 }
 
 export async function listSearchConsoleDailyMetrics(projectId: string): Promise<SearchConsoleDailyMetricRecord[]> {
-  const snapshot = await dailyCollection()
-    .where('projectId', '==', projectId)
-    .get();
+  const result = await queryCollection(
+    SEARCH_CONSOLE_DAILY_COLLECTION,
+    [{ field: 'projectId', op: 'EQUAL', value: projectId }],
+  );
 
-  return snapshot.docs.map((doc) => doc.data() as SearchConsoleDailyMetricRecord);
+  return result.docs.map((doc) => doc.data() as unknown as SearchConsoleDailyMetricRecord);
 }
 
 export async function listSearchConsolePageMetrics(projectId: string): Promise<SearchConsolePageMetricRecord[]> {
-  const snapshot = await pagesCollection()
-    .where('projectId', '==', projectId)
-    .get();
+  const result = await queryCollection(
+    SEARCH_CONSOLE_PAGES_28D_COLLECTION,
+    [{ field: 'projectId', op: 'EQUAL', value: projectId }],
+  );
 
-  return snapshot.docs.map((doc) => doc.data() as SearchConsolePageMetricRecord);
+  return result.docs.map((doc) => doc.data() as unknown as SearchConsolePageMetricRecord);
 }
 
 export async function getLatestSearchConsoleSyncRun(projectId: string): Promise<SearchConsoleSyncRunRecord | null> {
-  const snapshot = await syncRunsCollection()
-    .where('projectId', '==', projectId)
-    .get();
+  const result = await queryCollection(
+    SEARCH_CONSOLE_SYNC_RUNS_COLLECTION,
+    [{ field: 'projectId', op: 'EQUAL', value: projectId }],
+  );
 
-  const runs = snapshot.docs
+  const runs = result.docs
     .map((doc) => ({
       id: doc.id,
       ...(doc.data() as Omit<SearchConsoleSyncRunRecord, 'id'>),
@@ -124,13 +117,14 @@ export function buildSearchConsolePageDocId(projectId: string, pageUrl: string):
 }
 
 export async function writeSearchConsoleDailyMetrics(records: SearchConsoleDailyMetricRecord[]): Promise<number> {
-  const mutations = records.map((record) => ({
+  const ops = records.map((record) => ({
     kind: 'set' as const,
-    ref: dailyCollection().doc(buildSearchConsoleDailyDocId(record.projectId, record.date)),
-    data: record,
+    collection: SEARCH_CONSOLE_DAILY_COLLECTION,
+    docId: buildSearchConsoleDailyDocId(record.projectId, record.date),
+    data: record as unknown as Record<string, unknown>,
   }));
 
-  await commitMutations(mutations);
+  await batchWrite(ops);
   return records.length;
 }
 
@@ -138,37 +132,40 @@ export async function replaceSearchConsolePageMetrics(args: {
   projectId: string;
   records: SearchConsolePageMetricRecord[];
 }): Promise<{ written: number; deleted: number }> {
-  const existingSnapshot = await pagesCollection()
-    .where('projectId', '==', args.projectId)
-    .get();
+  const existingResult = await queryCollection(
+    SEARCH_CONSOLE_PAGES_28D_COLLECTION,
+    [{ field: 'projectId', op: 'EQUAL', value: args.projectId }],
+  );
 
   const nextIds = new Set<string>();
-  const mutations: Mutation[] = [];
+  const ops: Array<{ kind: 'set'; collection: string; docId: string; data: Record<string, unknown> } | { kind: 'delete'; collection: string; docId: string }> = [];
 
   for (const record of args.records) {
     const docId = buildSearchConsolePageDocId(record.projectId, record.pageUrl);
     nextIds.add(docId);
-    mutations.push({
+    ops.push({
       kind: 'set',
-      ref: pagesCollection().doc(docId),
-      data: record,
+      collection: SEARCH_CONSOLE_PAGES_28D_COLLECTION,
+      docId,
+      data: record as unknown as Record<string, unknown>,
     });
   }
 
   let deleted = 0;
-  for (const doc of existingSnapshot.docs) {
+  for (const doc of existingResult.docs) {
     if (nextIds.has(doc.id)) {
       continue;
     }
 
     deleted += 1;
-    mutations.push({
+    ops.push({
       kind: 'delete',
-      ref: doc.ref,
+      collection: SEARCH_CONSOLE_PAGES_28D_COLLECTION,
+      docId: doc.id,
     });
   }
 
-  await commitMutations(mutations);
+  await batchWrite(ops);
 
   return {
     written: args.records.length,
@@ -179,57 +176,19 @@ export async function replaceSearchConsolePageMetrics(args: {
 export async function recordSearchConsoleSyncRun(
   run: Omit<SearchConsoleSyncRunRecord, 'id'>,
 ): Promise<SearchConsoleSyncRunRecord> {
-  const reference = syncRunsCollection().doc();
-  const record: SearchConsoleSyncRunRecord = {
-    id: reference.id,
+  const newId = await createDocument(SEARCH_CONSOLE_SYNC_RUNS_COLLECTION, {
+    projectId: run.projectId,
+    uid: run.uid,
+    propertySiteUrl: run.propertySiteUrl,
+    status: run.status,
+    startedAt: run.startedAt,
+    finishedAt: run.finishedAt,
+    error: run.error,
+    counts: run.counts,
+  } as unknown as Record<string, unknown>);
+
+  return {
+    id: newId,
     ...run,
   };
-
-  await reference.set({
-    projectId: record.projectId,
-    uid: record.uid,
-    propertySiteUrl: record.propertySiteUrl,
-    status: record.status,
-    startedAt: record.startedAt,
-    finishedAt: record.finishedAt,
-    error: record.error,
-    counts: record.counts,
-  });
-
-  return record;
-}
-
-type Mutation =
-  | {
-    kind: 'set';
-    ref: FirebaseFirestore.DocumentReference;
-    data: unknown;
-  }
-  | {
-    kind: 'delete';
-    ref: FirebaseFirestore.DocumentReference;
-  };
-
-async function commitMutations(mutations: Mutation[]): Promise<void> {
-  if (mutations.length === 0) {
-    return;
-  }
-
-  for (let index = 0; index < mutations.length; index += MAX_BATCH_OPERATIONS) {
-    const batch = getFirestoreAdmin().batch();
-    const chunk = mutations.slice(index, index + MAX_BATCH_OPERATIONS);
-    applyMutations(batch, chunk);
-    await batch.commit();
-  }
-}
-
-function applyMutations(batch: WriteBatch, mutations: Mutation[]): void {
-  for (const mutation of mutations) {
-    if (mutation.kind === 'set') {
-      batch.set(mutation.ref, mutation.data);
-      continue;
-    }
-
-    batch.delete(mutation.ref);
-  }
 }

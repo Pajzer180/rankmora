@@ -1,6 +1,9 @@
 import 'server-only';
 
-import { getFirestoreAdmin } from '@/lib/server/firestoreAdmin';
+import {
+  queryCollection,
+  batchWrite,
+} from '@/lib/server/firestoreRest';
 import { listChangeJobsByStatus } from '@/lib/server/changeJobs';
 import { listSearchConsolePageMetrics } from '@/lib/server/gsc/storage';
 import type { ChangeJobRecord } from '@/types/changeJobs';
@@ -20,20 +23,17 @@ const CHANGE_MEASUREMENT_WINDOWS: Array<{ window: ChangeMeasurementWindow; days:
   { window: '30d', days: 30 },
 ];
 
-function changeMeasurementsCollection() {
-  return getFirestoreAdmin().collection(CHANGE_MEASUREMENTS_COLLECTION);
-}
-
 export function buildChangeMeasurementDocId(jobId: string, window: ChangeMeasurementWindow): string {
   return `${jobId}_${window}`;
 }
 
 export async function getChangeMeasurementsByJob(jobId: string): Promise<ChangeMeasurementRecord[]> {
-  const snapshot = await changeMeasurementsCollection()
-    .where('jobId', '==', jobId)
-    .get();
+  const result = await queryCollection(
+    CHANGE_MEASUREMENTS_COLLECTION,
+    [{ field: 'jobId', op: 'EQUAL', value: jobId }],
+  );
 
-  return snapshot.docs.map((doc) => ({
+  return result.docs.map((doc) => ({
     id: doc.id,
     ...(doc.data() as Omit<ChangeMeasurementRecord, 'id'>),
   }));
@@ -220,9 +220,11 @@ async function writeChangeMeasurements(records: ChangeMeasurementRecord[]): Prom
     return;
   }
 
-  const batch = getFirestoreAdmin().batch();
-  for (const record of records) {
-    batch.set(changeMeasurementsCollection().doc(record.id), {
+  const ops = records.map((record) => ({
+    kind: 'set' as const,
+    collection: CHANGE_MEASUREMENTS_COLLECTION,
+    docId: record.id,
+    data: {
       jobId: record.jobId,
       projectId: record.projectId,
       uid: record.uid,
@@ -238,10 +240,10 @@ async function writeChangeMeasurements(records: ChangeMeasurementRecord[]): Prom
       measuredAt: record.measuredAt,
       lastSyncedAt: record.lastSyncedAt,
       sourceWindowDays: record.sourceWindowDays,
-    });
-  }
+    } as Record<string, unknown>,
+  }));
 
-  await batch.commit();
+  await batchWrite(ops);
 }
 
 function findPageMetricForUrl(

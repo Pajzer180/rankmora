@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { getFirebaseAdminDb } from '@/lib/server/firebaseAdmin';
+import { getDocument } from '@/lib/server/firestoreRest';
 import type {
   AgentTone,
   BusinessGoal,
@@ -16,10 +16,6 @@ export interface ChatPersonalizationProfile {
   projectName?: string;
   companyName?: string;
   domain?: string;
-}
-
-function profilesCollection() {
-  return getFirebaseAdminDb().collection('profiles');
 }
 
 function normalizeOptionalString(value: unknown): string | undefined {
@@ -46,7 +42,7 @@ function isAgentTone(value: unknown): value is AgentTone {
 export async function getChatPersonalizationProfile(
   uid: string,
 ): Promise<ChatPersonalizationProfile | null> {
-  const snapshot = await profilesCollection().doc(uid).get();
+  const snapshot = await getDocument('profiles', uid);
   if (!snapshot.exists) {
     return null;
   }
