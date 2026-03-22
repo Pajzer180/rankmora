@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function proxy(request: NextRequest) {
+export const runtime = 'experimental-edge';
+
+export function middleware(request: NextRequest) {
   const isAuth         = !!request.cookies.get('bress-auth')?.value;
   const hasOnboarding  = !!request.cookies.get('bress-onboarding')?.value;
   const { pathname }   = request.nextUrl;
