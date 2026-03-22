@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { getClientDb } from '@/lib/firebase';
+import { queryCollection } from '@/lib/server/firestoreRest';
 
 // LEGACY — endpoint serwujący akcje SEO dla JS snippetu. Nowy core nie używa snippetu.
 
@@ -25,19 +24,13 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const db = getClientDb();
-
-  // Pobieramy dokumenty dla danego clientId i filtrujemy status w JS
-  // (unikamy konieczności tworzenia composite index w Firestore)
-  const q = query(
-    collection(db, 'seo_actions'),
-    where('clientId', '==', clientId),
+  const result = await queryCollection(
+    'seo_actions',
+    [{ field: 'clientId', op: 'EQUAL', value: clientId }],
   );
 
-  const snapshot = await getDocs(q);
-
-  const actions = snapshot.docs
-    .map((d) => d.data())
+  const actions = result.docs
+    .map((d) => d.data() as Record<string, unknown>)
     .filter((d) => d.status === 'active')
     .map((d) => d.actionData);
 

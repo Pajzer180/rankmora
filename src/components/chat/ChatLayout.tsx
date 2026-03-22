@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, getDocs } from 'firebase/firestore/lite';
 import { getClientDb } from '@/lib/firebase';
 import { getMessages } from '@/lib/chatFirestore';
 import { getOrCreateDefaultProject, getSnippetStatus } from '@/lib/snippetActions';
@@ -119,21 +119,29 @@ export default function ChatLayout() {
     })();
   }, [user, searchParams]);
 
-  // Real-time sessions subscription
+  // Sessions polling (lite SDK doesn't support onSnapshot)
   useEffect(() => {
     if (!user) return;
-    const db = getClientDb();
-    const q = query(
-      collection(db, 'chats', user.uid, 'sessions'),
-      orderBy('updatedAt', 'desc'),
-    );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setSessions(snapshot.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as Omit<ChatSession, 'id'>),
-      })));
-    });
-    return () => unsubscribe();
+    let cancelled = false;
+
+    const fetchSessions = async () => {
+      const db = getClientDb();
+      const q = query(
+        collection(db, 'chats', user.uid, 'sessions'),
+        orderBy('updatedAt', 'desc'),
+      );
+      const snapshot = await getDocs(q);
+      if (!cancelled) {
+        setSessions(snapshot.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<ChatSession, 'id'>),
+        })));
+      }
+    };
+
+    fetchSessions();
+    const interval = setInterval(fetchSessions, 5000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [user]);
 
   const handleSelectSession = async (sessionId: string) => {

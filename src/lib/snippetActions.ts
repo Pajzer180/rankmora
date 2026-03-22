@@ -9,7 +9,7 @@ import {
   where,
   limit,
   getDocs,
-} from 'firebase/firestore';
+} from 'firebase/firestore/lite';
 import { getClientDb } from '@/lib/firebase';
 import type { ProjectSearchConsoleState } from '@/types/searchConsole';
 

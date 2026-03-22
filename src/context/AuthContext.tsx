@@ -14,7 +14,7 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore/lite';
 import { getClientAuth, getClientDb } from '@/lib/firebase';
 import type { UserProfile } from '@/types/profile';
 

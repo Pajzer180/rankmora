@@ -4,18 +4,11 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { NextResponse } from 'next/server';
 import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  increment,
-  limit,
-  query,
-  setDoc,
-  updateDoc,
-  where,
-} from 'firebase/firestore';
-import { getClientDb } from '@/lib/firebase';
+  getDocument,
+  setDocument,
+  updateDocument,
+  queryCollection,
+} from '@/lib/server/firestoreRest';
 import type { Project, SiteInstall } from '@/lib/snippetActions';
 import { RouteError } from '@/lib/server/routeError';
 
@@ -113,20 +106,18 @@ function getSnippetAgentScript(): string {
 }
 
 async function findProjectByToken(token: string): Promise<Project | null> {
-  const db = getClientDb();
-  const projectsQuery = query(
-    collection(db, 'projects'),
-    where('snippetToken', '==', token),
-    limit(1),
+  const result = await queryCollection(
+    'projects',
+    [{ field: 'snippetToken', op: 'EQUAL', value: token }],
+    1,
   );
-  const snapshot = await getDocs(projectsQuery);
 
-  if (snapshot.empty) {
+  if (result.empty) {
     return null;
   }
 
-  const project = snapshot.docs[0];
-  return { id: project.id, ...project.data() } as Project;
+  const doc = result.docs[0];
+  return { id: doc.id, ...doc.data() } as Project;
 }
 
 function siteInstallDocId(projectId: string, domain: string): string {
@@ -137,15 +128,16 @@ async function upsertSiteInstall(
   project: Project,
   data: SiteInstallUpdateData,
 ): Promise<void> {
-  const db = getClientDb();
-  const installRef = doc(db, 'siteInstalls', siteInstallDocId(project.id, data.domain));
+  const docId = siteInstallDocId(project.id, data.domain);
   const now = Date.now();
-  const existingInstall = await getDoc(installRef);
+  const existingInstall = await getDocument('siteInstalls', docId);
 
-  if (existingInstall.exists()) {
-    await updateDoc(installRef, {
+  if (existingInstall.exists) {
+    const existing = existingInstall.data() as Record<string, unknown>;
+    const currentPingCount = typeof existing.pingCount === 'number' ? existing.pingCount : 0;
+    await updateDocument('siteInstalls', docId, {
       lastSeenAt: now,
-      pingCount: increment(1),
+      pingCount: currentPingCount + 1,
       pageUrl: data.pageUrl,
       pageTitle: data.pageTitle,
       userAgent: data.userAgent,
@@ -171,5 +163,5 @@ async function upsertSiteInstall(
     pingCount: 1,
   };
 
-  await setDoc(installRef, install);
+  await setDocument('siteInstalls', docId, install as unknown as Record<string, unknown>);
 }

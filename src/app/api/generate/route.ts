@@ -1,16 +1,12 @@
-﻿import { anthropic } from '@ai-sdk/anthropic';
+import { anthropic } from '@ai-sdk/anthropic';
 import { generateText } from 'ai';
 import { NextResponse } from 'next/server';
 import {
-  collection,
-  addDoc,
-  serverTimestamp,
-  doc,
-  setDoc,
-  increment,
-} from 'firebase/firestore';
+  createDocument,
+  getDocument,
+  setDocument,
+} from '@/lib/server/firestoreRest';
 import { writeChangeHistory } from '@/lib/changeHistory';
-import { getClientDb } from '@/lib/firebase';
 import {
   assertProjectOwnedByUser,
   requireAuthenticatedUid,
@@ -95,12 +91,11 @@ export async function POST(req: Request) {
           });
     }
 
-    const db = getClientDb();
-    const actionRef = await addDoc(collection(db, 'seo_actions'), {
+    const actionId = await createDocument('seo_actions', {
       clientId,
       actionData: parsed,
       status: 'active',
-      createdAt: serverTimestamp(),
+      createdAt: Date.now(),
       projectId: projectId ?? null,
       userId: uid,
       siteUrl: siteUrl ?? null,
@@ -122,24 +117,29 @@ export async function POST(req: Request) {
         summary: parsed.action || 'SEO action preview',
         entityType,
         entityId,
-        actionId: actionRef.id,
+        actionId,
         requestId,
       });
     }
 
     try {
-      await setDoc(
-        doc(db, 'clients', clientId),
-        { credits: increment(-10) },
-        { merge: true },
-      );
+      const clientDoc = await getDocument('clients', clientId);
+      const currentCredits = clientDoc.exists
+        ? (typeof (clientDoc.data() as Record<string, unknown>)?.credits === 'number'
+          ? (clientDoc.data() as Record<string, unknown>).credits as number
+          : 0)
+        : 0;
+      await setDocument('clients', clientId, {
+        ...((clientDoc.exists ? clientDoc.data() : {}) as Record<string, unknown>),
+        credits: currentCredits - 10,
+      });
     } catch (creditsErr) {
       console.error('[generate] Blad aktualizacji kredytow (cichy):', creditsErr);
     }
 
     return NextResponse.json({
       ...parsed,
-      actionId: actionRef.id,
+      actionId,
       requestId,
     });
   } catch (error) {

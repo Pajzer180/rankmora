@@ -1,12 +1,7 @@
 import {
-  addDoc,
-  collection,
-  getDocs,
-  limit as limitQuery,
-  orderBy,
-  query,
-} from 'firebase/firestore';
-import { getClientDb } from '@/lib/firebase';
+  createDocument,
+  queryCollection,
+} from '@/lib/server/firestoreRest';
 import type { ChangeHistoryEntry, ChangeHistoryWriteInput } from '@/types/history';
 
 const DEFAULT_LIMIT = 50;
@@ -17,13 +12,12 @@ function normalizeLimit(value?: number): number {
   return Math.min(Math.max(1, Math.floor(value)), MAX_LIMIT);
 }
 
-function historyCollection(projectId: string) {
-  const db = getClientDb();
-  return collection(db, 'projects', projectId, 'changeHistory');
+function historySubcollectionPath(projectId: string): string {
+  return `projects/${projectId}/changeHistory`;
 }
 
 export async function writeChangeHistory(input: ChangeHistoryWriteInput): Promise<string> {
-  const ref = await addDoc(historyCollection(input.projectId), {
+  const data = {
     ...input,
     createdAt: input.createdAt ?? Date.now(),
     entityType: input.entityType ?? 'unknown',
@@ -32,21 +26,26 @@ export async function writeChangeHistory(input: ChangeHistoryWriteInput): Promis
     executionTimeMs: input.executionTimeMs ?? null,
     requestId: input.requestId ?? null,
     actionId: input.actionId ?? null,
-  });
-  return ref.id;
+  };
+
+  const newId = await createDocument(
+    historySubcollectionPath(input.projectId),
+    data as unknown as Record<string, unknown>,
+  );
+  return newId;
 }
 
 export async function listChangeHistoryByProject(
   projectId: string,
   limitCount?: number,
 ): Promise<ChangeHistoryEntry[]> {
-  const q = query(
-    historyCollection(projectId),
-    orderBy('createdAt', 'desc'),
-    limitQuery(normalizeLimit(limitCount)),
+  // Query all history entries for this project subcollection
+  const result = await queryCollection(
+    historySubcollectionPath(projectId),
+    [],
   );
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((docSnap) => {
+
+  const entries = result.docs.map((docSnap) => {
     const data = docSnap.data() as Omit<ChangeHistoryEntry, 'id'>;
     return {
       id: docSnap.id,
@@ -59,4 +58,10 @@ export async function listChangeHistoryByProject(
       actionId: data.actionId ?? null,
     };
   });
+
+  // Sort by createdAt descending and apply limit
+  const limit = normalizeLimit(limitCount);
+  return entries
+    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+    .slice(0, limit);
 }

@@ -6,7 +6,7 @@ import {
   doc,
   query,
   orderBy,
-} from 'firebase/firestore';
+} from 'firebase/firestore/lite';
 import { getClientDb } from '@/lib/firebase';
 import type { AgentMode, AgentStyle, ChatMessageDoc } from '@/types/chat';
 
