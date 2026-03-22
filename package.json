@@ -19,7 +19,6 @@
     "firebase": "^12.9.0",
     "firebase-admin": "^13.7.0",
     "framer-motion": "^12.34.3",
-    "lightningcss-darwin-arm64": "^1.32.0",
     "lucide-react": "^0.575.0",
     "next": "16.1.6",
     "radix-ui": "^1.4.3",
